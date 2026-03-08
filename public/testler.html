@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testler - Futbol Okulu</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+        .logo { font-size: 24px; font-weight: bold; color: #667eea; }
+        .user-info { display: flex; align-items: center; gap: 15px; }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .card h3 { color: #667eea; margin-bottom: 15px; }
+        .form-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        label { font-weight: 600; color: #333; }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        th { color: #666; font-weight: 600; }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .muted { color: #888; font-size: 12px; }
+        .diff-up { color: #28a745; font-weight: 600; }
+        .diff-down { color: #dc3545; font-weight: 600; }
+        .diff-neutral { color: #666; font-weight: 600; }
+        .chart {
+            display: grid;
+            gap: 6px;
+        }
+        .chart-row {
+            display: grid;
+            grid-template-columns: 140px 1fr 50px;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+        .chart-label {
+            color: #444;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .chart-bar {
+            height: 12px;
+            background: #e9ecef;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .chart-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 6px;
+        }
+        .chart-value {
+            text-align: right;
+            color: #667eea;
+            font-weight: 600;
+        }
+        .metric-group {
+            margin-bottom: 10px;
+        }
+        .metric-group-title {
+            font-size: 14px;
+            font-weight: 700;
+            color: #667eea;
+            margin: 10px 0;
+        }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 15px;
+        }
+        .metric-card {
+            border: 1px solid #eee;
+            border-radius: 12px;
+            padding: 12px;
+            background: #fafafa;
+        }
+        .metric-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+        .metric-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            height: 120px;
+            padding: 6px 2px 2px;
+            border-bottom: 1px solid #eee;
+        }
+        .metric-bar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        .metric-bar-fill {
+            width: 100%;
+            background: #667eea;
+            border-radius: 6px 6px 0 0;
+            min-height: 2px;
+        }
+        .metric-bar-fill.prev { background: #9aa4b2; }
+        .metric-bar-fill.team { background: #28a745; }
+        .metric-bar-fill.general { background: #dc3545; }
+        .metric-bar-label {
+            font-size: 11px;
+            color: #666;
+        }
+        .metric-bar-value {
+            font-size: 11px;
+            font-weight: 600;
+            color: #333;
+        }
+        .empty { color: #999; text-align: center; padding: 10px 0; }
+        .readonly input, .readonly textarea, .readonly select {
+            background: #f8f9fa;
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">🧪 Testler</div>
+        <div id="navMenu"></div>
+        <div class="user-info">
+            <span id="currentUserName"></span>
+            <button onclick="logout()" class="btn-danger">Çıkış</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="card">
+            <h3>Öğrenci Seçimi</h3>
+            <div class="form-row">
+                <div>
+                    <label>Öğrenci</label>
+                    <select id="studentSelect"></select>
+                </div>
+                <div>
+                    <label>Ölçüm Tarihi</label>
+                    <input type="date" id="testDate" />
+                </div>
+                <div>
+                    <label>Ölçüm No</label>
+                    <input type="number" id="testNo" min="1" />
+                </div>
+                <div>
+                    <label>Takım / Grup</label>
+                    <input type="text" id="testGroupName" disabled />
+                </div>
+            </div>
+            <div class="form-row">
+                <div>
+                    <label>Notlar</label>
+                    <textarea id="testNotes" rows="3" placeholder="Test notları..."></textarea>
+                </div>
+                <div>
+                    <label>AI Yorum</label>
+                    <textarea id="testAiComment" rows="3" placeholder="Yapay zeka yorumlaması..."></textarea>
+                </div>
+            </div>
+            <div id="testInputsWrapper">
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ölçüm Tipi</th>
+                            <th>Seçilen Ölçüm</th>
+                            <th>Takım Ortalama</th>
+                            <th>Genel Ortalama</th>
+                        </tr>
+                    </thead>
+                    <tbody id="metricsInputRows"></tbody>
+                </table>
+                </div>
+                <div style="margin-top: 12px;">
+                    <button class="btn-success" onclick="saveTest()">💾 Testi Kaydet</button>
+                </div>
+            </div>
+            <div id="readOnlyNotice" class="muted" style="display:none; margin-top:10px;">
+                Bu kullanıcı rolü sadece görüntüleme yapabilir.
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Son Ölçüm Karşılaştırması</h3>
+            <div id="latestComparison"></div>
+        </div>
+
+        <div class="card">
+            <h3>Grafik Kartları</h3>
+            <div id="metricCharts"></div>
+        </div>
+
+        <div class="card">
+            <h3>Ölçüm Geçmişi</h3>
+            <div id="testHistory"></div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        const METRICS = [
+            { key: 'yas', label: 'YAŞ', unit: '' },
+            { key: 'kilo', label: 'KİLO(kg)', unit: 'kg' },
+            { key: 'boy', label: 'BOY(cm)', unit: 'cm' },
+            { key: 'bmi', label: 'BMI (Vücut Kitle Endeksi)', unit: '' },
+            { key: 'kilo_persentil', label: 'KİLO PERSENTİL(%)', unit: '%' },
+            { key: 'boy_persentil', label: 'BOY PERSENTİL(%)', unit: '%' },
+            { key: 'sol_diz_fleksiyon', label: 'SOL DİZ FLEKSİYON KUVVETİ(kg)', unit: 'kg' },
+            { key: 'sag_diz_fleksiyon', label: 'SAĞ DİZ FLEKSİYON KUVVETİ(kg)', unit: 'kg' },
+            { key: 'sol_diz_ekstansiyon', label: 'SOL DİZ EKSTANSİYON KUVVETİ(kg)', unit: 'kg' },
+            { key: 'sag_diz_ekstansiyon', label: 'SAĞ DİZ EKSTANSİYON KUVVETİ(kg)', unit: 'kg' },
+            { key: 'cift_ayak_denge', label: 'ÇİFT AYAK DENGE', unit: '' },
+            { key: 'sag_ayak_denge', label: 'SAĞ AYAK DENGE', unit: '' },
+            { key: 'sol_ayak_denge', label: 'SOL AYAK DENGE', unit: '' },
+            { key: 'sag_ayak_reaksiyon_sure', label: 'SAĞ AYAK REAKSİYON SÜRESİ(sn)', unit: 'sn' },
+            { key: 'sag_ayak_reaksiyon_skor', label: 'SAĞ AYAK REAKSİYON SKORU', unit: '' },
+            { key: 'sol_ayak_reaksiyon_sure', label: 'SOL AYAK REAKSİYON SÜRESİ(sn)', unit: 'sn' },
+            { key: 'sol_ayak_reaksiyon_skor', label: 'SOL AYAK REAKSİYON SKORU', unit: '' },
+            { key: 'sprint_15', label: '15 METRE SPRINT SÜRESİ(sn)', unit: 'sn' },
+            { key: 'sprint_30', label: '30 METRE SPRINT SÜRESİ(sn)', unit: 'sn' },
+            { key: 'sprint_toplu_15', label: '15 METRE TOPLU SPRINT SÜRESİ(sn)', unit: 'sn' },
+            { key: 'sprint_toplu_30', label: '30 METRE TOPLU SPRINT SÜRESİ(sn)', unit: 'sn' },
+            { key: 'ceviklik', label: 'ÇEVİKLİK TESTİ(sn)', unit: 'sn' },
+            { key: 'ceviklik_toplu', label: 'ÇEVİKLİK TESTİ TOPLU(sn)', unit: 'sn' },
+            { key: 'esneklik', label: 'ESNEKLİK TESTİ(cm)', unit: 'cm' },
+            { key: 'sol_el_pence', label: 'SOL EL PENÇE KUVVETİ(kg)', unit: 'kg' },
+            { key: 'sag_el_pence', label: 'SAĞ EL PENÇE KUVVETİ(kg)', unit: 'kg' },
+            { key: 'ziplama', label: 'ZIPLAMA YÜKSEKLİĞİ', unit: '' }
+        ];
+
+        const METRIC_GROUPS = [
+            { title: 'Vücut Ölçüleri', keys: ['yas', 'kilo', 'boy', 'bmi', 'kilo_persentil', 'boy_persentil'] },
+            { title: 'Alt Ekstremite Kuvvet', keys: ['sol_diz_fleksiyon', 'sag_diz_fleksiyon', 'sol_diz_ekstansiyon', 'sag_diz_ekstansiyon'] },
+            { title: 'Denge', keys: ['cift_ayak_denge', 'sag_ayak_denge', 'sol_ayak_denge'] },
+            { title: 'Reaksiyon', keys: ['sag_ayak_reaksiyon_sure', 'sag_ayak_reaksiyon_skor', 'sol_ayak_reaksiyon_sure', 'sol_ayak_reaksiyon_skor'] },
+            { title: 'Sprint', keys: ['sprint_15', 'sprint_30', 'sprint_toplu_15', 'sprint_toplu_30'] },
+            { title: 'Çeviklik & Esneklik', keys: ['ceviklik', 'ceviklik_toplu', 'esneklik'] },
+            { title: 'Üst Ekstremite & Zıplama', keys: ['sol_el_pence', 'sag_el_pence', 'ziplama'] }
+        ];
+
+        let allStudents = [];
+        let selectedStudent = null;
+        let sessionsCache = [];
+        let teamAvgMap = {};
+        let generalAvgMap = {};
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        function formatDate(value) {
+            return value ? new Date(value).toLocaleDateString('tr-TR') : '-';
+        }
+
+        function toNumber(value) {
+            const n = parseFloat(value);
+            return Number.isFinite(n) ? n : null;
+        }
+
+        function diffPercent(current, base) {
+            if (current === null || base === null || base === 0) return null;
+            return ((current - base) / base) * 100;
+        }
+
+        function diffClass(value) {
+            if (value === null) return 'diff-neutral';
+            if (value > 0) return 'diff-up';
+            if (value < 0) return 'diff-down';
+            return 'diff-neutral';
+        }
+
+        function renderMetricInputs(readonly) {
+            const tbody = document.getElementById('metricsInputRows');
+            tbody.innerHTML = METRICS.map(m => `
+                <tr>
+                    <td>${m.label}</td>
+                    <td><input type="number" step="0.01" data-key="${m.key}" data-field="value" ${readonly ? 'disabled' : ''} /></td>
+                    <td><input type="number" step="0.01" data-key="${m.key}" data-field="teamAvg" disabled /></td>
+                    <td><input type="number" step="0.01" data-key="${m.key}" data-field="generalAvg" disabled /></td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadStudents() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+            document.getElementById('currentUserName').textContent = user.adSoyad;
+
+            let students = [];
+            if (user.rol === 'veli') {
+                const res = await fetch(`${API_URL}/parent/${user.id}/students`);
+                students = await res.json();
+            } else {
+                let url = `${API_URL}/students`;
+                if (user.rol === 'yonetici' && user.subeId) {
+                    url += `?subeId=${user.subeId}`;
+                }
+                const res = await fetch(url);
+                students = await res.json();
+
+                if (user.rol === 'antrenor') {
+                    const groupsRes = await fetch(`${API_URL}/groups?instructorId=${user.id}`);
+                    const groups = await groupsRes.json();
+                    const groupIds = new Set(groups.map(g => g.id));
+                    students = students.filter(s => groupIds.has(s.groupId));
+                }
+            }
+
+            allStudents = students;
+            const select = document.getElementById('studentSelect');
+            select.innerHTML = students.map(s => `<option value="${s.id}">${esc(s.ad)} ${esc(s.soyad)}</option>`).join('');
+
+            if (students.length > 0) {
+                select.value = students[0].id;
+                await onStudentChange();
+            } else {
+                select.innerHTML = '<option value="">Öğrenci yok</option>';
+            }
+
+            const isReadOnly = user.rol === 'veli';
+            document.getElementById('testInputsWrapper').style.display = isReadOnly ? 'none' : 'block';
+            document.getElementById('readOnlyNotice').style.display = isReadOnly ? 'block' : 'none';
+            renderMetricInputs(isReadOnly);
+        }
+
+        async function onStudentChange() {
+            const studentId = parseInt(document.getElementById('studentSelect').value);
+            selectedStudent = allStudents.find(s => s.id === studentId) || null;
+            if (!selectedStudent) return;
+
+            document.getElementById('testDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('testNo').value = '';
+
+            let groupName = '-';
+            if (selectedStudent.groupId) {
+                try {
+                    const groupsRes = await fetch(`${API_URL}/groups`);
+                    const groups = await groupsRes.json();
+                    const group = groups.find(g => g.id === selectedStudent.groupId);
+                    groupName = group ? group.groupName : '-';
+                } catch (e) {}
+            }
+            document.getElementById('testGroupName').value = groupName;
+
+            await loadAveragesForSelection();
+            await loadTests(studentId);
+        }
+
+        async function loadAveragesForSelection() {
+            if (!selectedStudent) return;
+            const date = document.getElementById('testDate').value;
+            const params = new URLSearchParams({ date });
+            if (selectedStudent.groupId) {
+                params.append('groupId', selectedStudent.groupId);
+            }
+            try {
+                const res = await fetch(`${API_URL}/tests/averages?${params.toString()}`);
+                const data = await res.json();
+                teamAvgMap = data.team || {};
+                generalAvgMap = data.general || {};
+            } catch (e) {
+                teamAvgMap = {};
+                generalAvgMap = {};
+            }
+
+            METRICS.forEach(m => {
+                const teamInput = document.querySelector(`#metricsInputRows input[data-key="${m.key}"][data-field="teamAvg"]`);
+                const generalInput = document.querySelector(`#metricsInputRows input[data-key="${m.key}"][data-field="generalAvg"]`);
+                if (teamInput) teamInput.value = teamAvgMap[m.key] !== undefined ? teamAvgMap[m.key].toFixed(2) : '';
+                if (generalInput) generalInput.value = generalAvgMap[m.key] !== undefined ? generalAvgMap[m.key].toFixed(2) : '';
+            });
+        }
+
+        async function loadTests(studentId) {
+            const res = await fetch(`${API_URL}/tests/student/${studentId}`);
+            sessionsCache = await res.json();
+            renderLatestComparison();
+            renderMetricCharts();
+            renderHistory();
+        }
+
+        function formatMetricValue(value) {
+            if (value === null || value === undefined) return '-';
+            if (Number.isInteger(value)) return value.toString();
+            return value.toFixed(2);
+        }
+
+        function renderMetricCharts() {
+            const container = document.getElementById('metricCharts');
+            if (!sessionsCache || sessionsCache.length === 0) {
+                container.innerHTML = '<div class="empty">Henüz test girilmemiş.</div>';
+                return;
+            }
+
+            const current = sessionsCache[0];
+            const previous = sessionsCache[1] || null;
+
+            const prevMap = new Map((previous?.metrics || []).map(m => [m.metricKey, m]));
+            const currMap = new Map((current.metrics || []).map(m => [m.metricKey, m]));
+
+            const metricCard = (m) => {
+                const cur = currMap.get(m.key);
+                const prev = prevMap.get(m.key);
+                const curVal = cur ? cur.value : null;
+                const prevVal = prev ? prev.value : null;
+                const teamVal = teamAvgMap[m.key] !== undefined ? teamAvgMap[m.key] : (cur ? cur.teamAvg : null);
+                const generalVal = generalAvgMap[m.key] !== undefined ? generalAvgMap[m.key] : (cur ? cur.generalAvg : null);
+
+                const values = [prevVal, curVal, teamVal, generalVal].filter(v => v !== null && v !== undefined);
+                const maxVal = Math.max(...(values.length ? values : [1]));
+
+                const heightFor = v => {
+                    if (v === null || v === undefined) return 2;
+                    return Math.max(2, Math.round((v / maxVal) * 100));
+                };
+
+                return `
+                    <div class="metric-card">
+                        <div class="metric-title">${m.label}${m.unit ? ` (${m.unit})` : ''}</div>
+                        <div class="metric-chart">
+                            <div class="metric-bar">
+                                <div class="metric-bar-value">${formatMetricValue(prevVal)}</div>
+                                <div class="metric-bar-fill prev" style="height:${heightFor(prevVal)}%"></div>
+                                <div class="metric-bar-label">Önceki</div>
+                            </div>
+                            <div class="metric-bar">
+                                <div class="metric-bar-value">${formatMetricValue(curVal)}</div>
+                                <div class="metric-bar-fill" style="height:${heightFor(curVal)}%"></div>
+                                <div class="metric-bar-label">Seçilen</div>
+                            </div>
+                            <div class="metric-bar">
+                                <div class="metric-bar-value">${formatMetricValue(teamVal)}</div>
+                                <div class="metric-bar-fill team" style="height:${heightFor(teamVal)}%"></div>
+                                <div class="metric-bar-label">Takım</div>
+                            </div>
+                            <div class="metric-bar">
+                                <div class="metric-bar-value">${formatMetricValue(generalVal)}</div>
+                                <div class="metric-bar-fill general" style="height:${heightFor(generalVal)}%"></div>
+                                <div class="metric-bar-label">Genel</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            };
+
+            container.innerHTML = METRIC_GROUPS.map(group => {
+                const cards = group.keys.map(key => {
+                    const metric = METRICS.find(m => m.key === key);
+                    return metric ? metricCard(metric) : '';
+                }).join('');
+                return `
+                    <div class="metric-group">
+                        <div class="metric-group-title">${group.title}</div>
+                        <div class="metric-grid">${cards}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderLatestComparison() {
+            const container = document.getElementById('latestComparison');
+            if (!sessionsCache || sessionsCache.length === 0) {
+                container.innerHTML = '<div class="empty">Henüz test girilmemiş.</div>';
+                return;
+            }
+
+            const current = sessionsCache[0];
+            const previous = sessionsCache[1] || null;
+
+            const prevMap = new Map((previous?.metrics || []).map(m => [m.metricKey, m]));
+            const currMap = new Map((current.metrics || []).map(m => [m.metricKey, m]));
+
+            const rows = METRICS.map(m => {
+                const cur = currMap.get(m.key);
+                const prev = prevMap.get(m.key);
+                const curVal = cur ? cur.value : null;
+                const prevVal = prev ? prev.value : null;
+                const teamAvg = teamAvgMap[m.key] !== undefined ? teamAvgMap[m.key] : (cur ? cur.teamAvg : null);
+                const generalAvg = generalAvgMap[m.key] !== undefined ? generalAvgMap[m.key] : (cur ? cur.generalAvg : null);
+                const diffPrev = diffPercent(curVal, prevVal);
+                const diffTeam = diffPercent(curVal, teamAvg);
+                const diffGeneral = diffPercent(curVal, generalAvg);
+                return `
+                    <tr>
+                        <td>${m.label}</td>
+                        <td>${prevVal ?? '-'}</td>
+                        <td><strong>${curVal ?? '-'}</strong></td>
+                        <td>${teamAvg ?? '-'}</td>
+                        <td>${generalAvg ?? '-'}</td>
+                        <td class="${diffClass(diffPrev)}">${diffPrev === null ? '-' : diffPrev.toFixed(1) + '%'}</td>
+                        <td class="${diffClass(diffTeam)}">${diffTeam === null ? '-' : diffTeam.toFixed(1) + '%'}</td>
+                        <td class="${diffClass(diffGeneral)}">${diffGeneral === null ? '-' : diffGeneral.toFixed(1) + '%'}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="muted" style="margin-bottom:6px;">
+                    Son ölçüm: ${formatDate(current.date)} | Önceki: ${previous ? formatDate(previous.date) : '-'}
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ölçüm Tipi</th>
+                            <th>Önceki</th>
+                            <th>Seçilen</th>
+                            <th>Takım Ort.</th>
+                            <th>Genel Ort.</th>
+                            <th>Önceki Fark %</th>
+                            <th>Takım Fark %</th>
+                            <th>Genel Fark %</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}                    </tbody>
+                </table>
+                </div>
+                ${current.aiComment ? `<div style="margin-top:10px;"><strong>AI Yorum:</strong> ${esc(current.aiComment)}</div>` : ''}
+            `;
+        }
+
+        function renderHistory() {
+            const container = document.getElementById('testHistory');
+            if (!sessionsCache || sessionsCache.length === 0) {
+                container.innerHTML = '<div class="empty">Henüz test girilmemiş.</div>';
+                return;
+            }
+
+            const rows = sessionsCache.map(s => `
+                <tr>
+                    <td>${formatDate(s.date)}</td>
+                    <td>${s.olcumNo || '-'}</td>
+                    <td>${esc(s.createdRole || '-')}</td>
+                    <td>${esc(s.notes || '-')}</td>
+                </tr>
+            `).join('');
+
+            container.innerHTML = `
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Ölçüm No</th>
+                            <th>Ekleyen Rol</th>
+                            <th>Notlar</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                </div>
+            `;
+        }
+
+        async function saveTest() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            if (user.rol === 'veli') return;
+
+            if (!selectedStudent) {
+                alert('Öğrenci seçiniz');
+                return;
+            }
+
+            const date = document.getElementById('testDate').value;
+            const olcumNo = document.getElementById('testNo').value;
+            const notes = document.getElementById('testNotes').value;
+            const aiComment = document.getElementById('testAiComment').value;
+
+            const metrics = METRICS.map(m => {
+                const valueInput = document.querySelector(`#metricsInputRows input[data-key="${m.key}"][data-field="value"]`);
+                return {
+                    metricKey: m.key,
+                    label: m.label,
+                    unit: m.unit,
+                    value: valueInput ? toNumber(valueInput.value) : null,
+                    teamAvg: teamAvgMap[m.key] !== undefined ? teamAvgMap[m.key] : null,
+                    generalAvg: generalAvgMap[m.key] !== undefined ? generalAvgMap[m.key] : null
+                };
+            });
+
+            const payload = {
+                studentId: selectedStudent.id,
+                olcumNo: olcumNo ? parseInt(olcumNo, 10) : null,
+                date,
+                groupId: selectedStudent.groupId || null,
+                createdBy: user.id,
+                createdRole: user.rol,
+                notes,
+                aiComment,
+                metrics
+            };
+
+            const response = await fetch(`${API_URL}/tests`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (response.ok) {
+                alert('✅ Test kaydedildi');
+                document.querySelectorAll('#metricsInputRows input').forEach(i => i.value = '');
+                document.getElementById('testNotes').value = '';
+                document.getElementById('testAiComment').value = '';
+                await loadTests(selectedStudent.id);
+            } else {
+                alert('❌ Test kaydedilemedi');
+            }
+        }
+
+        document.getElementById('studentSelect').addEventListener('change', onStudentChange);
+        document.getElementById('testDate').addEventListener('change', loadAveragesForSelection);
+
+        loadStudents();
+    </script>
+</body>
+</html>

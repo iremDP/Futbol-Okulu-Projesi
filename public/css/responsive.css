@@ -1,0 +1,205 @@
+/**
+ * Mobil uyumluluk - Tüm sayfalar için responsive stiller
+ */
+@media (max-width: 768px) {
+  .header {
+    flex-wrap: wrap;
+    padding: 15px 15px !important;
+    gap: 12px;
+  }
+
+  .logo {
+    font-size: 18px !important;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .nav-menu {
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .nav-menu a {
+    padding: 8px 12px !important;
+    font-size: 13px !important;
+  }
+
+  .user-info {
+    gap: 10px !important;
+    flex-wrap: wrap;
+  }
+
+  .user-name {
+    font-size: 14px !important;
+  }
+
+  .logout-btn, .btn-danger {
+    padding: 8px 14px !important;
+    font-size: 13px !important;
+  }
+
+  .container {
+    margin: 15px auto !important;
+    padding: 0 12px !important;
+  }
+
+  .content {
+    padding: 20px 15px !important;
+    border-radius: 12px !important;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 15px;
+  }
+
+  .page-header h1 {
+    font-size: 22px !important;
+  }
+
+  .stats-cards {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+
+  .stat-card {
+    padding: 15px !important;
+  }
+
+  .stat-value {
+    font-size: 24px !important;
+  }
+
+  .period-selector {
+    padding: 15px !important;
+  }
+
+  .period-selector select {
+    min-width: 100% !important;
+    width: 100%;
+  }
+
+  .tabs {
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .tab {
+    padding: 10px 15px !important;
+    font-size: 14px !important;
+  }
+
+  .filters {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .filters input,
+  .filters select {
+    min-width: 100% !important;
+    width: 100%;
+  }
+
+  /* Tablo mobil - yatay kaydırma */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -15px;
+    padding: 0 15px;
+  }
+
+  table {
+    min-width: 600px;
+    font-size: 13px;
+  }
+
+  th, td {
+    padding: 10px 8px !important;
+  }
+
+  /* İşlem butonları - mobilde dikey veya wrap */
+  td [style*="display: flex"],
+  td [style*="display:flex"] {
+    flex-direction: column !important;
+    gap: 6px !important;
+  }
+
+  /* Kart grid - mobilde tek sütun */
+  .student-grid {
+    grid-template-columns: 1fr !important;
+    gap: 15px;
+  }
+
+  .student-card {
+    padding: 18px !important;
+  }
+
+  .student-name {
+    font-size: 18px !important;
+  }
+
+  .student-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .debt-amount {
+    font-size: 20px !important;
+  }
+
+  /* Modal mobil */
+  .modal-content {
+    width: 95% !important;
+    max-width: 95% !important;
+    padding: 25px 20px !important;
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .modal-header h2 {
+    font-size: 18px !important;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 16px !important; /* iOS zoom önleme */
+  }
+
+  /* Ödeme bilgisi alanları */
+  .payment-info p {
+    margin-bottom: 8px;
+    font-size: 14px;
+  }
+
+  /* Buton grupları */
+  .btn-primary, .btn-success {
+    padding: 10px 14px !important;
+    font-size: 14px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-cards {
+    grid-template-columns: 1fr !important;
+  }
+
+  .logo {
+    font-size: 16px !important;
+  }
+}
+
+/* Login sayfası mobil */
+@media (max-width: 768px) {
+  .login-container {
+    padding: 30px 20px !important;
+  }
+
+  .logo h1 {
+    font-size: 24px !important;
+  }
+}

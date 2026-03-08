@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ön Muhasebe - Futbol Okulu</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo { font-size: 24px; font-weight: bold; color: #667eea; }
+
+        .user-info { display: flex; align-items: center; gap: 15px; }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .container { max-width: 1400px; margin: 30px auto; padding: 0 20px; }
+
+        .filter-bar {
+            background: white;
+            border-radius: 15px;
+            padding: 15px 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .filter-bar input,
+        .filter-bar select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            font-weight: 600;
+            color: #667eea;
+            background: white;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 18px;
+            border-radius: 999px;
+            border: none;
+            background: #e0e7ff;
+            color: #1e3a8a;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(30,58,138,0.12);
+            transition: all 0.2s ease;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 6px 16px rgba(37,99,235,0.35);
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        th { color: #666; font-weight: 600; }
+
+        .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            box-shadow: 0 6px 16px rgba(37,99,235,0.25);
+        }
+
+        .btn-secondary {
+            background: #e0e7ff;
+            color: #1e3a8a;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        #expenseTab .form-row input,
+        #expenseTab .form-row select {
+            border: 2px solid #e0e7ff;
+            border-radius: 12px;
+            padding: 10px 12px;
+            font-weight: 600;
+            color: #1e3a8a;
+            background: #f8faff;
+            transition: all 0.2s ease;
+        }
+
+        #expenseTab .form-row input:focus,
+        #expenseTab .form-row select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+            background: white;
+        }
+
+        #incomeTab .form-row input {
+            border: 2px solid #e0e7ff;
+            border-radius: 12px;
+            padding: 10px 12px;
+            font-weight: 600;
+            color: #1e3a8a;
+            background: #f8faff;
+            transition: all 0.2s ease;
+        }
+
+        #incomeTab .form-row input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
+            background: white;
+        }
+
+        @media (max-width: 900px) {
+            .form-row { grid-template-columns: 1fr 1fr; }
+        }
+
+        @media (max-width: 600px) {
+            .form-row { grid-template-columns: 1fr; }
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">💼 Ön Muhasebe</div>
+        <div id="navMenu"></div>
+        <div class="user-info">
+            <span id="currentUserName"></span>
+            <button onclick="logout()" class="btn-danger">Çıkış</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="filter-bar">
+            <input type="date" id="startDate">
+            <input type="date" id="endDate">
+            <select id="subeFilter" style="display:none;"></select>
+            <button class="btn-primary" onclick="loadAll()">Filtrele</button>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('income')">📈 Gelir</button>
+            <button class="tab" onclick="switchTab('expense')">📉 Gider</button>
+            <button class="tab" onclick="switchTab('cash')">💼 Kasa</button>
+        </div>
+
+        <div id="incomeTab" class="tab-content">
+            <div class="card">
+                <h3>Gelirler</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Şube</th>
+                            <th>Kaynak</th>
+                            <th>Tutar</th>
+                            <th>Açıklama</th>
+                        </tr>
+                    </thead>
+                    <tbody id="incomeList"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="expenseTab" class="tab-content" style="display:none;">
+            <div class="card">
+                <h3>➖ Gider Ekle</h3>
+                <div class="form-row" style="margin-top: 10px;">
+                    <input type="hidden" id="expenseEditId">
+                    <select id="expenseCategory">
+                        <option value="Antrenör Maaşı">Antrenör Maaşı</option>
+                        <option value="Saha Kirası">Saha Kirası</option>
+                        <option value="Franchise">Franchise</option>
+                        <option value="Vergi">Vergi</option>
+                        <option value="Sosyal Medya">Sosyal Medya</option>
+                        <option value="SGK">SGK</option>
+                        <option value="Malzeme">Malzeme</option>
+                        <option value="Su">Su</option>
+                        <option value="Bakım">Bakım</option>
+                        <option value="Reklam">Reklam</option>
+                        <option value="Diğer">Diğer</option>
+                    </select>
+                    <input type="number" id="expenseAmount" placeholder="Tutar">
+                    <input type="date" id="expenseDate">
+                    <input type="text" id="expenseNote" placeholder="Açıklama">
+                </div>
+                <button class="btn-primary" style="margin-top:10px;" id="expenseSaveBtn">Kaydet</button>
+            </div>
+            <div class="card">
+                <h3>Giderler</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Tarih</th>
+                            <th>Şube</th>
+                            <th>Kategori</th>
+                            <th>Tutar</th>
+                            <th>Açıklama</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="expenseList"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="cashTab" class="tab-content" style="display:none;">
+            <div class="card">
+                <h3>💼 Kasa Özeti</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Şube</th>
+                            <th>Toplam Gelir</th>
+                            <th>Toplam Gider</th>
+                            <th>Kasa (Net)</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cashList"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        let currentUser = null;
+        let allSubeler = [];
+
+        (function() {
+            const user = localStorage.getItem('currentUser');
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+            currentUser = JSON.parse(user);
+            document.getElementById('currentUserName').textContent = currentUser.adSoyad;
+            if (!['admin', 'yonetici'].includes(currentUser.rol)) {
+                alert('Bu sayfaya erişim yetkiniz yok!');
+                window.location.href = 'index.html';
+            }
+        })();
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        function switchTab(tab) {
+            document.getElementById('incomeTab').style.display = tab === 'income' ? 'block' : 'none';
+            document.getElementById('expenseTab').style.display = tab === 'expense' ? 'block' : 'none';
+            document.getElementById('cashTab').style.display = tab === 'cash' ? 'block' : 'none';
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            const index = tab === 'income' ? 0 : tab === 'expense' ? 1 : 2;
+            document.querySelectorAll('.tab')[index].classList.add('active');
+        }
+
+        async function loadSubeFilter() {
+            const response = await fetch(`${API_URL}/subeler/active`);
+            allSubeler = await response.json();
+            if (currentUser.rol !== 'admin') return;
+            const select = document.getElementById('subeFilter');
+            select.innerHTML = '<option value="">Tüm Şubeler</option>' +
+                allSubeler.map(s => `<option value="${s.id}">${esc(s.subeAdi)}</option>`).join('');
+            select.style.display = 'inline-block';
+        }
+
+        function getSubeAdi(subeId) {
+            if (!subeId) return 'Tüm Şubeler';
+            const sube = allSubeler.find(s => s.id === subeId);
+            return sube ? sube.subeAdi : '-';
+        }
+
+        function buildQueryParams() {
+            const params = new URLSearchParams();
+            const start = document.getElementById('startDate').value;
+            const end = document.getElementById('endDate').value;
+            const sube = currentUser.rol === 'yonetici' ? currentUser.subeId : document.getElementById('subeFilter').value;
+            if (start) params.append('start', start);
+            if (end) params.append('end', end);
+            if (sube) params.append('subeId', sube);
+            return params.toString();
+        }
+
+        async function loadIncomes() {
+            const response = await fetch(`${API_URL}/accounting/incomes?${buildQueryParams()}`);
+            const incomes = await response.json();
+            const tbody = document.getElementById('incomeList');
+            if (incomes.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999;">Gelir yok</td></tr>';
+                return;
+            }
+            tbody.innerHTML = incomes.map(i => `
+                <tr>
+                    <td>${new Date(i.odemeTarihi).toLocaleDateString('tr-TR')}</td>
+                    <td>${esc(getSubeAdi(i.subeId))}</td>
+                    <td>${esc(i.kaynak)}</td>
+                    <td><strong>${i.tutar.toFixed(2)} TL</strong></td>
+                    <td>${esc(i.aciklama || '-')}</td>
+                </tr>
+            `).join('');
+        }
+
+        async function loadExpenses() {
+            const response = await fetch(`${API_URL}/accounting/expenses?${buildQueryParams()}`);
+            const expenses = await response.json();
+            const tbody = document.getElementById('expenseList');
+            if (expenses.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#999;">Gider yok</td></tr>';
+                return;
+            }
+            tbody.innerHTML = expenses.map(e => `
+                <tr>
+                    <td>${new Date(e.giderTarihi).toLocaleDateString('tr-TR')}</td>
+                    <td>${esc(getSubeAdi(e.subeId))}</td>
+                    <td>${esc(e.kategori)}</td>
+                    <td><strong>${e.tutar.toFixed(2)} TL</strong></td>
+                    <td>${esc(e.aciklama || '-')}</td>
+                    <td>
+                        <button class="btn-secondary" onclick="editExpense(${e.id}, '${esc(e.kategori)}', ${e.tutar}, '${e.giderTarihi}', '${esc(e.aciklama || '')}')">✏️</button>
+                        <button class="btn-danger" onclick="deleteExpense(${e.id})">🗑️</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function buildCashSummary(incomes, expenses) {
+            const map = {};
+            const addRow = (subeId, type, amount) => {
+                const key = subeId || 'all';
+                if (!map[key]) {
+                    map[key] = { subeId: subeId || null, income: 0, expense: 0 };
+                }
+                map[key][type] += amount;
+            };
+            incomes.forEach(i => addRow(i.subeId, 'income', i.tutar));
+            expenses.forEach(e => addRow(e.subeId, 'expense', e.tutar));
+            return Object.values(map);
+        }
+
+        async function loadCash() {
+            const incomes = await (await fetch(`${API_URL}/accounting/incomes?${buildQueryParams()}`)).json();
+            const expenses = await (await fetch(`${API_URL}/accounting/expenses?${buildQueryParams()}`)).json();
+            const rows = buildCashSummary(incomes, expenses);
+            const tbody = document.getElementById('cashList');
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999;">Kasa verisi yok</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(r => {
+                const net = r.income - r.expense;
+                return `
+                    <tr>
+                        <td>${esc(getSubeAdi(r.subeId))}</td>
+                        <td><strong>${r.income.toFixed(2)} TL</strong></td>
+                        <td><strong>${r.expense.toFixed(2)} TL</strong></td>
+                        <td><strong>${net.toFixed(2)} TL</strong></td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+
+        async function addExpense() {
+            const data = {
+                subeId: currentUser.rol === 'yonetici' ? currentUser.subeId : (document.getElementById('subeFilter').value || null),
+                kategori: document.getElementById('expenseCategory').value,
+                tutar: parseFloat(document.getElementById('expenseAmount').value || '0'),
+                giderTarihi: document.getElementById('expenseDate').value || new Date().toISOString().split('T')[0],
+                aciklama: document.getElementById('expenseNote').value || ''
+            };
+            await fetch(`${API_URL}/accounting/expenses`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            document.getElementById('expenseAmount').value = '';
+            document.getElementById('expenseDate').value = '';
+            document.getElementById('expenseNote').value = '';
+            document.getElementById('expenseEditId').value = '';
+            document.getElementById('expenseSaveBtn').textContent = 'Kaydet';
+            loadAll();
+        }
+
+        function editExpense(id, kategori, tutar, giderTarihi, aciklama) {
+            document.getElementById('expenseCategory').value = kategori;
+            document.getElementById('expenseAmount').value = tutar;
+            document.getElementById('expenseDate').value = giderTarihi ? giderTarihi.split('T')[0] : '';
+            document.getElementById('expenseNote').value = aciklama || '';
+            document.getElementById('expenseEditId').value = id;
+            document.getElementById('expenseSaveBtn').textContent = 'Güncelle';
+            switchTab('expense');
+        }
+
+        async function deleteExpense(id) {
+            if (!confirm('Bu gideri silmek istiyor musunuz?')) return;
+            await fetch(`${API_URL}/accounting/expenses/${id}`, { method: 'DELETE' });
+            loadAll();
+        }
+
+        async function saveEditedExpenseIfAny() {
+            const editId = document.getElementById('expenseEditId').value;
+            if (!editId) return false;
+            const data = {
+                subeId: currentUser.rol === 'yonetici' ? currentUser.subeId : (document.getElementById('subeFilter').value || null),
+                kategori: document.getElementById('expenseCategory').value,
+                tutar: parseFloat(document.getElementById('expenseAmount').value || '0'),
+                giderTarihi: document.getElementById('expenseDate').value || new Date().toISOString().split('T')[0],
+                aciklama: document.getElementById('expenseNote').value || ''
+            };
+            await fetch(`${API_URL}/accounting/expenses/${editId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            document.getElementById('expenseEditId').value = '';
+            document.getElementById('expenseAmount').value = '';
+            document.getElementById('expenseDate').value = '';
+            document.getElementById('expenseNote').value = '';
+            document.getElementById('expenseSaveBtn').textContent = 'Kaydet';
+            return true;
+        }
+
+        async function loadAll() {
+            await loadIncomes();
+            await loadExpenses();
+            await loadCash();
+        }
+
+        loadSubeFilter().then(loadAll);
+
+        document.getElementById('expenseSaveBtn').addEventListener('click', async () => {
+            const edited = await saveEditedExpenseIfAny();
+            if (edited) {
+                loadAll();
+            } else {
+                addExpense();
+            }
+        });
+    </script>
+</body>
+</html>

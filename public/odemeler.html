@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ödeme Yönetimi - Futbol Okulu</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .nav-menu {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-menu a {
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            font-weight: 600;
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
+        .nav-menu a.admin-link {
+            background: #dc3545;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .page-header h1 {
+            color: #333;
+            font-size: 32px;
+        }
+
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px;
+            border-radius: 15px;
+            color: white;
+        }
+
+        .stat-card.success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        }
+
+        .stat-card.danger {
+            background: linear-gradient(135deg, #dc3545 0%, #fd7e14 100%);
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-bottom: 10px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .period-selector {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .period-selector label {
+            font-weight: 600;
+            color: #333;
+            margin-right: 15px;
+        }
+
+        .period-selector select {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            min-width: 300px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+
+        .tab {
+            padding: 15px 30px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filters input,
+        .filters select {
+            padding: 10px 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .filters input {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .filters select {
+            min-width: 200px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #ddd;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .modal-header h2 {
+            color: #333;
+        }
+
+        .close-btn {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .payment-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+
+        .payment-info p {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .payment-info strong {
+            color: #667eea;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+            display: block;
+        }
+
+        .message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            display: block;
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">⚽ Futbol Okulu Yönetim</div>
+        <nav class="nav-menu" id="navMenu"></nav>
+        <div class="user-info">
+            <span class="user-name" id="currentUserName"></span>
+            <button class="logout-btn" onclick="logout()">Çıkış</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <div id="messageDiv" class="message"></div>
+
+            <div class="page-header">
+                <h1>💰 Ödeme Yönetimi</h1>
+            </div>
+
+            <!-- Dönem Seçici -->
+            <div class="period-selector">
+                <label>📅 İstatistik Dönemi:</label>
+                <select id="periodSelector"></select>
+            </div>
+
+            <!-- İstatistikler -->
+            <div class="stats-cards">
+                <div class="stat-card danger">
+                    <div class="stat-label">Borçlu Öğrenci</div>
+                    <div class="stat-value" id="totalBorclu">0</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">Ödeme Yapan</div>
+                    <div class="stat-value" id="totalOdenen">0</div>
+                </div>
+                <div class="stat-card danger">
+                    <div class="stat-label">Toplam Borç</div>
+                    <div class="stat-value" id="totalBorcluTutar">0 TL</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-label">Toplam Tahsilat</div>
+                    <div class="stat-value" id="totalOdenenTutar">0 TL</div>
+                </div>
+            </div>
+
+            <!-- Sekmeler -->
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('borclu')">🔴 Borçlu Öğrenciler</button>
+                <button class="tab" onclick="switchTab('odenen')">✅ Ödeme Yapanlar</button>
+            </div>
+
+            <!-- Borçlu Öğrenciler Sekmesi -->
+            <div id="borcluTab" class="tab-content active">
+                <div class="filters">
+                    <input type="text" id="searchBorclu" placeholder="🔍 Öğrenci adı veya dönem ara...">
+                    <select id="filterPeriodBorclu">
+                        <option value="">Tüm Dönemler</option>
+                    </select>
+                    <select id="subeFilterBorclu" style="display: none;">
+                        <option value="">Tüm Şubeler</option>
+                    </select>
+                </div>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Öğrenci</th>
+                            <th>Dönem</th>
+                            <th>Borç Tutarı</th>
+                            <th>Kayıt Tarihi</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="borcluList"></tbody>
+                </table>
+                </div>
+            </div>
+
+            <!-- Ödenen Öğrenciler Sekmesi -->
+            <div id="odenenTab" class="tab-content">
+                <div class="filters">
+                    <input type="text" id="searchOdenen" placeholder="🔍 Öğrenci adı veya dönem ara...">
+                    <select id="filterPeriodOdenen">
+                        <option value="">Tüm Dönemler</option>
+                    </select>
+                    <select id="subeFilterOdenen" style="display: none;">
+                        <option value="">Tüm Şubeler</option>
+                    </select>
+                </div>
+                <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Öğrenci</th>
+                            <th>Dönem</th>
+                            <th>Tutar</th>
+                            <th>Ödeme Tarihi</th>
+                            <th>Ödeme Yöntemi</th>
+                            <th>Notlar</th>
+                            <th>İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="odenenList"></tbody>
+                </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ödeme Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💳 Ödeme Yap</h2>
+                <button class="close-btn" onclick="closePaymentModal()">×</button>
+            </div>
+            <form id="paymentForm">
+                <input type="hidden" id="paymentId">
+                <div class="payment-info">
+                    <p><strong>Öğrenci:</strong> <span id="paymentStudentName"></span></p>
+                    <p><strong>Dönem:</strong> <span id="paymentPeriodName"></span></p>
+                    <p><strong>Tutar:</strong> <span id="paymentAmount"></span> TL</p>
+                </div>
+                <div class="form-group">
+                    <label>Ödeme Tarihi *</label>
+                    <input type="date" id="paymentDate" required>
+                </div>
+                <div class="form-group">
+                    <label>Ödeme Yöntemi *</label>
+                    <select id="paymentMethod" required>
+                        <option value="">Seçiniz...</option>
+                        <option value="Nakit">Nakit</option>
+                        <option value="Kredi Kartı">Kredi Kartı</option>
+                        <option value="Banka Havalesi">Banka Havalesi</option>
+                        <option value="EFT">EFT</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notlar</label>
+                    <textarea id="paymentNotes" placeholder="Ek notlar..."></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" class="btn-success" style="flex: 1;">✅ Ödemeyi Kaydet</button>
+                    <button type="button" class="btn-danger" onclick="closePaymentModal()">❌ İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Ödeme Düzenleme Modal -->
+    <div id="editPaymentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>✏️ Ödeme Düzenle</h2>
+                <button class="close-btn" onclick="closeEditPaymentModal()">×</button>
+            </div>
+            <form id="editPaymentForm">
+                <input type="hidden" id="editPaymentId">
+                <div class="payment-info">
+                    <p><strong>Öğrenci:</strong> <span id="editPaymentStudentName"></span></p>
+                    <p><strong>Dönem:</strong> <span id="editPaymentPeriodName"></span></p>
+                    <p><strong>Tutar:</strong> <span id="editPaymentAmount"></span> TL</p>
+                </div>
+                <div class="form-group">
+                    <label>Ödeme Tarihi *</label>
+                    <input type="date" id="editPaymentDate" required>
+                </div>
+                <div class="form-group">
+                    <label>Ödeme Yöntemi *</label>
+                    <select id="editPaymentMethod" required>
+                        <option value="">Seçiniz...</option>
+                        <option value="Nakit">Nakit</option>
+                        <option value="Kredi Kartı">Kredi Kartı</option>
+                        <option value="Banka Havalesi">Banka Havalesi</option>
+                        <option value="EFT">EFT</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Notlar</label>
+                    <textarea id="editPaymentNotes" placeholder="Ek notlar..."></textarea>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button type="submit" class="btn-success" style="flex: 1;">💾 Güncelle</button>
+                    <button type="button" class="btn-danger" onclick="closeEditPaymentModal()">❌ İptal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Makbuz Gönder Modal (E-posta + SMS) -->
+    <div id="emailReceiptModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📤 Makbuz Gönder</h2>
+                <button class="close-btn" onclick="closeEmailModal()">×</button>
+            </div>
+            <input type="hidden" id="emailReceiptPaymentId">
+            <div class="payment-info" id="emailReceiptInfo">
+                <p><strong>Öğrenci:</strong> <span id="emailReceiptStudentName"></span></p>
+                <p><strong>Dönem:</strong> <span id="emailReceiptPeriodName"></span></p>
+                <p><strong>Telefon:</strong> <span id="emailReceiptPhone"></span></p>
+            </div>
+            <div class="form-group">
+                <label>E-posta (varsa gönderilir, yoksa sadece SMS)</label>
+                <input type="email" id="emailReceiptTo" placeholder="veli@ornek.com">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn-success" id="emailReceiptBtn" onclick="sendReceiptEmail()" style="flex: 1;">📤 Gönder</button>
+                <button type="button" class="btn-danger" onclick="closeEmailModal()">İptal</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        let allPayments = [];
+        let allPeriods = [];
+        let selectedSubeId = null;
+
+        // Menü ortak dosyadan yüklenir
+
+        // Yetki kontrolü
+        (function() {
+            const user = localStorage.getItem('currentUser');
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const userData = JSON.parse(user);
+            document.getElementById('currentUserName').textContent = userData.adSoyad;
+            
+            if (!['admin', 'yonetici'].includes(userData.rol)) {
+                alert('Bu sayfaya erişim yetkiniz yok!');
+                window.location.href = 'index.html';
+            }
+        })();
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        function showMessage(text, type = 'success') {
+            const msg = document.getElementById('messageDiv');
+            msg.textContent = text;
+            msg.className = `message ${type}`;
+            setTimeout(() => {
+                msg.className = 'message';
+            }, 3000);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            if (tab === 'borclu') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('borcluTab').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('odenenTab').classList.add('active');
+            }
+        }
+
+        async function loadSubeFilter() {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            if (!currentUser || currentUser.rol !== 'admin') return;
+
+            const response = await fetch(`${API_URL}/subeler/active`);
+            const subeler = await response.json();
+            const options = '<option value="">Tüm Şubeler</option>' +
+                subeler.map(s => `<option value="${s.id}">${esc(s.subeAdi)}</option>`).join('');
+
+            const selectBorclu = document.getElementById('subeFilterBorclu');
+            const selectOdenen = document.getElementById('subeFilterOdenen');
+            if (selectBorclu) {
+                selectBorclu.innerHTML = options;
+                selectBorclu.style.display = 'inline-block';
+            }
+            if (selectOdenen) {
+                selectOdenen.innerHTML = options;
+                selectOdenen.style.display = 'inline-block';
+            }
+
+            const onChange = (value) => {
+                selectedSubeId = value ? parseInt(value, 10) : null;
+                if (selectBorclu) selectBorclu.value = value || '';
+                if (selectOdenen) selectOdenen.value = value || '';
+                loadData();
+            };
+
+            if (selectBorclu) {
+                selectBorclu.addEventListener('change', () => onChange(selectBorclu.value));
+            }
+            if (selectOdenen) {
+                selectOdenen.addEventListener('change', () => onChange(selectOdenen.value));
+            }
+        }
+
+        async function loadData() {
+            try {
+                const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+                
+                // Dönemleri yükle (şube filtresiyle - her şube sadece kendi dönemlerini görsün)
+                const periodsSubeIdParam = currentUser.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+                const periodsUrl = periodsSubeIdParam ? `${API_URL}/periods?subeId=${periodsSubeIdParam}` : `${API_URL}/periods`;
+                const periodsResponse = await fetch(periodsUrl);
+                let periodsData = await periodsResponse.json();
+                
+                // Yönetici için ek güvenlik: sadece kendi şubesinin dönemlerini göster (istatistik/dönem filtrelerinde)
+                const periodsSubeId = currentUser.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+                if (currentUser.rol === 'yonetici' && currentUser.subeId) {
+                    periodsData = periodsData.filter(p => p.subeId == currentUser.subeId);
+                }
+                allPeriods = periodsData;
+                
+                // Dönem filtrelerini doldur (sadece kendi şube dönemleri)
+                const filterBorclu = document.getElementById('filterPeriodBorclu');
+                const filterOdenen = document.getElementById('filterPeriodOdenen');
+                
+                const filteredPeriods = periodsSubeId
+                    ? allPeriods.filter(p => p.subeId == periodsSubeId)
+                    : allPeriods;
+                const periodOptions = filteredPeriods.map(p => `<option value="${p.id}">${esc(p.donemAdi)}</option>`).join('');
+                filterBorclu.innerHTML = '<option value="">Tüm Dönemler</option>' + periodOptions;
+                filterOdenen.innerHTML = '<option value="">Tüm Dönemler</option>' + periodOptions;
+                
+                // Ödemeleri yükle (şubeye göre filtrele)
+                let paymentsUrl = `${API_URL}/period-payments`;
+                const paymentsSubeId = currentUser.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+                if (paymentsSubeId) {
+                    paymentsUrl += `?subeId=${paymentsSubeId}`;
+                }
+                const paymentsResponse = await fetch(paymentsUrl);
+                allPayments = await paymentsResponse.json();
+                
+                // EN SON AKTİF DÖNEMİ BUL (sadece kendi şube dönemleri)
+                const activePeriodsOnly = filteredPeriods.filter(p => p.durum === 'Aktif');
+                const latestActivePeriod = activePeriodsOnly.length > 0 
+                    ? activePeriodsOnly.sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi))[0]
+                    : null;
+                
+                // Sadece en son aktif döneme ait ödemeleri filtrele
+                const filteredPaymentsForStats = latestActivePeriod 
+                    ? allPayments.filter(p => p.periodId === latestActivePeriod.id)
+                    : [];
+                
+                updateStats(filteredPaymentsForStats, latestActivePeriod);
+                
+                // Dönem selector'ı doldur (sadece kendi şube dönemleri)
+                const periodSelector = document.getElementById('periodSelector');
+                periodSelector.innerHTML = filteredPeriods
+                    .filter(p => p.durum === 'Aktif')
+                    .sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi))
+                    .map(p => `<option value="${p.id}" ${p.id === latestActivePeriod?.id ? 'selected' : ''}>${esc(p.donemAdi)} (${new Date(p.baslangicTarihi).toLocaleDateString('tr-TR')})</option>`)
+                    .join('');
+                
+                // Dönem değişince istatistikleri güncelle
+                periodSelector.onchange = function() {
+                    const selectedPeriodId = parseInt(this.value);
+                    if (selectedPeriodId) {
+                        const selectedPeriod = allPeriods.find(p => p.id === selectedPeriodId);
+                        const filteredPayments = allPayments.filter(p => p.periodId === selectedPeriodId);
+                        updateStats(filteredPayments, selectedPeriod);
+                    }
+                };
+                
+                displayBorclu(allPayments.filter(p => p.odemeDurumu === 'Borçlu'));
+                displayOdenen(allPayments.filter(p => p.odemeDurumu === 'Ödendi'));
+                
+            } catch (error) {
+                console.error('Hata:', error);
+                showMessage('Veriler yüklenirken hata oluştu: ' + error.message, 'error');
+            }
+        }
+
+        function updateStats(payments = allPayments, period = null) {
+            const borclu = payments.filter(p => p.odemeDurumu === 'Borçlu');
+            const odenen = payments.filter(p => p.odemeDurumu === 'Ödendi');
+            
+            document.getElementById('totalBorclu').textContent = borclu.length;
+            document.getElementById('totalOdenen').textContent = odenen.length;
+            
+            const borcluTutar = borclu.reduce((sum, p) => sum + p.tutar, 0);
+            const odenenTutar = odenen.reduce((sum, p) => sum + p.tutar, 0);
+            
+            document.getElementById('totalBorcluTutar').textContent = borcluTutar.toFixed(2) + ' TL';
+            document.getElementById('totalOdenenTutar').textContent = odenenTutar.toFixed(2) + ' TL';
+            
+            // Dönem bilgisini göster
+            const statsCards = document.querySelector('.stats-cards');
+            const existingInfo = document.getElementById('periodInfo');
+            if (existingInfo) existingInfo.remove();
+            
+            if (period) {
+                const periodInfo = document.createElement('div');
+                periodInfo.id = 'periodInfo';
+                periodInfo.style.cssText = 'grid-column: 1/-1; background: #667eea; color: white; padding: 15px; border-radius: 10px; text-align: center; font-weight: 600;';
+                periodInfo.innerHTML = `📅 Görüntülenen Dönem: ${esc(period.donemAdi)} (${new Date(period.baslangicTarihi).toLocaleDateString('tr-TR')} - ${new Date(period.bitisTarihi).toLocaleDateString('tr-TR')})`;
+                statsCards.appendChild(periodInfo);
+            }
+        }
+
+        document.getElementById('searchBorclu').addEventListener('input', filterBorclu);
+        document.getElementById('filterPeriodBorclu').addEventListener('change', filterBorclu);
+        document.getElementById('subeFilterBorclu')?.addEventListener('change', filterBorclu);
+
+        function filterBorclu() {
+            const searchTerm = document.getElementById('searchBorclu').value.toLowerCase();
+            const periodFilter = document.getElementById('filterPeriodBorclu').value;
+            const subeFilter = document.getElementById('subeFilterBorclu')?.value || '';
+            
+            let filtered = allPayments.filter(p => {
+                if (p.odemeDurumu !== 'Borçlu') return false;
+                
+                const matchesSearch = 
+                    p.ad.toLowerCase().includes(searchTerm) ||
+                    p.soyad.toLowerCase().includes(searchTerm) ||
+                    p.donemAdi.toLowerCase().includes(searchTerm);
+                
+                const matchesPeriod = !periodFilter || p.periodId == periodFilter;
+                
+                const matchesSube = !subeFilter || String(p.subeId || '') === subeFilter;
+                return matchesSearch && matchesPeriod && matchesSube;
+            });
+            
+            displayBorclu(filtered);
+        }
+
+        function formatDate(value) {
+            if (!value) return '-';
+            const d = new Date(value);
+            if (Number.isNaN(d.getTime())) return '-';
+            return d.toLocaleDateString('tr-TR');
+        }
+
+        function displayBorclu(payments) {
+            const tbody = document.getElementById('borcluList');
+            
+            if (payments.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999;">Borçlu öğrenci yok 🎉</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = payments.map(p => `
+                <tr>
+                    <td><strong>${esc(p.ad)} ${esc(p.soyad)}</strong></td>
+                    <td>${esc(p.donemAdi)}</td>
+                    <td><strong style="color: #dc3545;">${p.tutar.toFixed(2)} TL</strong></td>
+                    <td>${formatDate(p.sonAktifTarihi || p.kayitTarihi)}</td>
+                    <td>
+                        <button class="btn-success" onclick="openPaymentModal(${p.id}, '${esc(p.ad + ' ' + p.soyad)}', '${esc(p.donemAdi)}', ${p.tutar})">💳 Ödeme Al</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        document.getElementById('searchOdenen').addEventListener('input', filterOdenen);
+        document.getElementById('filterPeriodOdenen').addEventListener('change', filterOdenen);
+        document.getElementById('subeFilterOdenen')?.addEventListener('change', filterOdenen);
+
+        function filterOdenen() {
+            const searchTerm = document.getElementById('searchOdenen').value.toLowerCase();
+            const periodFilter = document.getElementById('filterPeriodOdenen').value;
+            const subeFilter = document.getElementById('subeFilterOdenen')?.value || '';
+            
+            let filtered = allPayments.filter(p => {
+                if (p.odemeDurumu !== 'Ödendi') return false;
+                
+                const matchesSearch = 
+                    p.ad.toLowerCase().includes(searchTerm) ||
+                    p.soyad.toLowerCase().includes(searchTerm) ||
+                    p.donemAdi.toLowerCase().includes(searchTerm);
+                
+                const matchesPeriod = !periodFilter || p.periodId == periodFilter;
+                
+                const matchesSube = !subeFilter || String(p.subeId || '') === subeFilter;
+                return matchesSearch && matchesPeriod && matchesSube;
+            });
+            
+            displayOdenen(filtered);
+        }
+
+        function displayOdenen(payments) {
+            const tbody = document.getElementById('odenenList');
+            
+            if (payments.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#999;">Ödeme kaydı yok</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = payments.map(p => `
+                <tr>
+                    <td><strong>${esc(p.ad)} ${esc(p.soyad)}</strong></td>
+                    <td>${esc(p.donemAdi)}</td>
+                    <td><strong style="color: #28a745;">${p.tutar.toFixed(2)} TL</strong></td>
+                    <td>${p.odemeTarihi ? new Date(p.odemeTarihi).toLocaleDateString('tr-TR') : '-'}</td>
+                    <td>${esc(p.odemeYontemi || '-')}</td>
+                    <td>${esc(p.notlar || '-')}</td>
+                    <td style="display: flex; gap: 5px; flex-wrap: wrap;">
+                        <button class="btn-primary" onclick="openEditPaymentModal(${p.id}, '${esc(p.ad + ' ' + p.soyad)}', '${esc(p.donemAdi)}', ${p.tutar}, '${esc(p.odemeTarihi || '')}', '${esc(p.odemeYontemi || '')}', '${esc(p.notlar || '')}')">✏️</button>
+                        <button class="btn-danger" onclick="deletePayment(${p.id})">🗑️</button>
+                        <button type="button" class="btn-primary" onclick="openReceipt(${p.id})" style="padding: 8px 15px;">📄</button>
+                        <button type="button" class="btn-primary" onclick="openEmailModal(${p.id})" style="padding: 8px 15px; background: #17a2b8;">📤</button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function openPaymentModal(paymentId, studentName, periodName, amount) {
+            document.getElementById('paymentId').value = paymentId;
+            document.getElementById('paymentStudentName').textContent = studentName;
+            document.getElementById('paymentPeriodName').textContent = periodName;
+            document.getElementById('paymentAmount').textContent = amount.toFixed(2);
+            document.getElementById('paymentDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('paymentModal').classList.add('active');
+        }
+
+        function closePaymentModal() {
+            document.getElementById('paymentModal').classList.remove('active');
+            document.getElementById('paymentForm').reset();
+        }
+
+        document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const paymentId = document.getElementById('paymentId').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/period-payments/${paymentId}/pay`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        odemeTarihi: document.getElementById('paymentDate').value,
+                        odemeYontemi: document.getElementById('paymentMethod').value,
+                        notlar: document.getElementById('paymentNotes').value
+                    })
+                });
+                
+                if (response.ok) {
+                    showMessage('✅ Ödeme başarıyla kaydedildi!');
+                    openReceipt(paymentId);
+                    closePaymentModal();
+                    loadData();
+                } else {
+                    const error = await response.json();
+                    showMessage('❌ Hata: ' + error.error, 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            }
+        });
+
+        function openEditPaymentModal(paymentId, studentName, periodName, amount, paymentDate, paymentMethod, notes) {
+            document.getElementById('editPaymentId').value = paymentId;
+            document.getElementById('editPaymentStudentName').textContent = studentName;
+            document.getElementById('editPaymentPeriodName').textContent = periodName;
+            document.getElementById('editPaymentAmount').textContent = amount.toFixed(2);
+            document.getElementById('editPaymentDate').value = paymentDate ? paymentDate.split('T')[0] : '';
+            document.getElementById('editPaymentMethod').value = paymentMethod || '';
+            document.getElementById('editPaymentNotes').value = notes || '';
+            
+            document.getElementById('editPaymentModal').classList.add('active');
+        }
+        
+        function closeEditPaymentModal() {
+            document.getElementById('editPaymentModal').classList.remove('active');
+        }
+
+        async function openEmailModal(paymentId) {
+            document.getElementById('emailReceiptPaymentId').value = paymentId;
+            document.getElementById('emailReceiptTo').value = '';
+            document.getElementById('emailReceiptStudentName').textContent = '...';
+            document.getElementById('emailReceiptPeriodName').textContent = '...';
+            document.getElementById('emailReceiptPhone').textContent = '...';
+            document.getElementById('emailReceiptModal').classList.add('active');
+            try {
+                const res = await fetch(`${API_URL}/period-payments/${paymentId}/receipt-info`);
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('emailReceiptStudentName').textContent = data.studentName || '-';
+                    document.getElementById('emailReceiptPeriodName').textContent = data.periodName || '-';
+                    document.getElementById('emailReceiptPhone').textContent = data.phone ? (data.phone.length === 10 ? '0' + data.phone : data.phone) : '-';
+                    document.getElementById('emailReceiptTo').value = data.email || '';
+                }
+            } catch (e) {
+                showMessage('Bilgi alınamadı: ' + e.message, 'error');
+            }
+        }
+
+        function closeEmailModal() {
+            document.getElementById('emailReceiptModal').classList.remove('active');
+        }
+
+        async function sendReceiptEmail() {
+            const paymentId = document.getElementById('emailReceiptPaymentId').value;
+            const email = document.getElementById('emailReceiptTo').value.trim();
+            const btn = document.getElementById('emailReceiptBtn');
+            btn.disabled = true;
+            btn.textContent = 'Gönderiliyor...';
+            try {
+                const res = await fetch(`${API_URL}/period-payments/${paymentId}/send-receipt-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email || undefined })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showMessage('✅ ' + (data.message || 'Makbuz gönderildi.'));
+                    closeEmailModal();
+                } else {
+                    showMessage('❌ ' + (data.error || 'Gönderilemedi'), 'error');
+                }
+            } catch (e) {
+                showMessage('❌ Hata: ' + e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📤 Gönder';
+            }
+        }
+        
+        document.getElementById('editPaymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const paymentId = document.getElementById('editPaymentId').value;
+            
+            try {
+                const response = await fetch(`${API_URL}/period-payments/${paymentId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        odemeTarihi: document.getElementById('editPaymentDate').value,
+                        odemeYontemi: document.getElementById('editPaymentMethod').value,
+                        notlar: document.getElementById('editPaymentNotes').value
+                    })
+                });
+                
+                if (response.ok) {
+                    showMessage('✅ Ödeme güncellendi!');
+                    closeEditPaymentModal();
+                    loadData();
+                } else {
+                    const error = await response.json();
+                    showMessage('❌ Hata: ' + error.error, 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            }
+        });
+        
+        async function deletePayment(paymentId) {
+            if (!confirm('Bu ödemeyi silmek istediğinizden emin misiniz?\n\nÖğrenci tekrar BORÇLU durumuna geçecek!')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/period-payments/${paymentId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    showMessage('✅ Ödeme silindi! Öğrenci tekrar borçlu durumunda.');
+                    loadData();
+                } else {
+                    const error = await response.json();
+                    showMessage('❌ Hata: ' + error.error, 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            }
+        }
+
+        // Sayfa yüklendiğinde
+        loadSubeFilter();
+        loadData();
+    </script>
+</body>
+</html>

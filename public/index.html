@@ -1,0 +1,2056 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Futbol Okulu Yönetim Sistemi v2.0</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .stats {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .content {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .form-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+        }
+
+        .form-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-edit {
+            background: #ffc107;
+            color: #333;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .success-message.show {
+            display: block;
+        }
+
+        .students-section {
+            margin-top: 40px;
+        }
+
+        .search-bar {
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .search-bar input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .btn-filter {
+            padding: 12px 24px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .btn-filter:hover {
+            background: #f0f0ff;
+        }
+
+        .btn-filter.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .students-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .student-card {
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 15px;
+            padding: 20px;
+            transition: all 0.3s;
+        }
+
+        .student-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .student-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .student-info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .student-info-grid p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .student-card-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+
+        .student-card-actions button {
+            flex: 1;
+            min-width: 120px;
+            padding: 8px 15px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #667eea;
+        }
+
+        .close-modal {
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        @media (max-width: 768px) {
+            .form-row, .form-row-3 {
+                grid-template-columns: 1fr;
+            }
+            
+            .students-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">⚽ Futbol Okulu Yönetim Sistemi</div>
+        <div id="navMenu"></div>
+        <div class="user-info">
+            <span id="currentUserName"></span>
+            <button onclick="logout()" class="btn-danger">Çıkış</button>
+        </div>
+        <div class="stats" id="totalStudents">
+            <span style="font-weight: bold;">Toplam: 0</span> | 
+            <span style="color: #d4edda;">Aktif: 0</span> | 
+            <span style="color: #f8d7da;">Pasif: 0</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <h2 style="margin-bottom: 20px; color: #333;">Yeni Öğrenci Kayıt</h2>
+            <div id="successMessage" class="success-message"></div>
+
+            <div class="form-section" style="margin-bottom: 25px; background: #e8f4fd; border: 1px solid #b8daff;">
+                <h3>📥 Excel'den Toplu İçe Aktar</h3>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Mevcut öğrenci listenizi Excel'de hazırlayıp toplu yükleyebilirsiniz. Önce şablonu indirip sütunları doldurun.</p>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
+                    <a href="#" id="downloadTemplateBtn" class="btn-primary" style="text-decoration: none; display: inline-block;">📄 Şablon İndir</a>
+                    <input type="file" id="importFileInput" accept=".xlsx,.xls" style="display: none;">
+                    <button type="button" class="btn-primary" id="selectFileBtn" style="background: #28a745;">📂 Dosya Seç</button>
+                    <button type="button" class="btn-primary" id="importBtn" disabled style="background: #17a2b8;">⬆️ İçe Aktar</button>
+                </div>
+                <div id="importResult" style="margin-top: 12px; display: none; padding: 10px; border-radius: 8px;"></div>
+            </div>
+
+            <form id="studentForm">
+                <div class="form-section">
+                    <h3>👤 Öğrenci Bilgileri</h3>
+                    <div class="form-row-3">
+                        <div class="form-group">
+                            <label>Öğrenci Adı *</label>
+                            <input type="text" id="studentName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Öğrenci Soyadı *</label>
+                            <input type="text" id="studentSurname" required>
+                        </div>
+                        <div class="form-group">
+                            <label>TC Kimlik No *</label>
+                            <input type="text" id="tcNo" maxlength="11" pattern="[0-9]{11}" title="11 haneli TC kimlik numarası giriniz" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Doğum Tarihi *</label>
+                            <input type="date" id="birthDate" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Şube *</label>
+                            <select id="studentSube" required>
+                                <option value="">Seçiniz...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Grup *</label>
+                            <select id="studentGroup" required disabled>
+                                <option value="">Önce şube seçin</option>
+                            </select>
+                        </div>
+                    </div>
+
+                <div class="form-section">
+                    <h3>👨‍👩‍👧 Veli Bilgileri</h3>
+                    <div class="form-group">
+                        <label>Veli Adı Soyadı *</label>
+                        <input type="text" id="parentName" required>
+                    </div>
+                    <div class="form-group">
+                        <label>E-posta</label>
+                        <input type="email" id="email">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Veli Telefon 1 *</label>
+                            <input type="tel" id="parentPhone1" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Veli Telefon 2</label>
+                            <input type="tel" id="parentPhone2">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <h3>🏠 Adres ve Okul</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Mahalle *</label>
+                            <select id="mahalle" required>
+                                <option value="Altındağ Mahallesi">Altındağ Mahallesi</option>
+                                <option value="Bahçelievler Mahallesi">Bahçelievler Mahallesi</option>
+                                <option value="Balbey Mahallesi">Balbey Mahallesi</option>
+                                <option value="Barbaros Mahallesi">Barbaros Mahallesi</option>
+                                <option value="Çağlayan Mahallesi">Çağlayan Mahallesi</option>
+                                <option value="Cumhuriyet Mahallesi">Cumhuriyet Mahallesi</option>
+                                <option value="Deniz Mahallesi">Deniz Mahallesi</option>
+                                <option value="Dutlubahçe Mahallesi">Dutlubahçe Mahallesi</option>
+                                <option value="Elmali Mahallesi">Elmali Mahallesi</option>
+                                <option value="Emek Mahallesi">Emek Mahallesi</option>
+                                <option value="Etiler Mahallesi">Etiler Mahallesi</option>
+                                <option value="Fener Mahallesi">Fener Mahallesi</option>
+                                <option value="Gençlik Mahallesi">Gençlik Mahallesi</option>
+                                <option value="Güzeloluk Mahallesi">Güzeloluk Mahallesi</option>
+                                <option value="Güzeloba Mahallesi">Güzeloba Mahallesi</option>
+                                <option value="Haşimişcan Mahallesi">Haşimişcan Mahallesi</option>
+                                <option value="Kılınçarslan Mahallesi">Kılınçarslan Mahallesi</option>
+                                <option value="Kızılsaray Mahallesi">Kızılsaray Mahallesi</option>
+                                <option value="Konuksever Mahallesi">Konuksever Mahallesi</option>
+                                <option value="Kundu Mahallesi">Kundu Mahallesi</option>
+                                <option value="Kışla Mahallesi">Kışla Mahallesi</option>
+                                <option value="Memurevleri Mahallesi">Memurevleri Mahallesi</option>
+                                <option value="Sedir Mahallesi">Sedir Mahallesi</option>
+                                <option value="Şirinyalı Mahallesi">Şirinyalı Mahallesi</option>
+                                <option value="Tahılpazarı Mahallesi">Tahılpazarı Mahallesi</option>
+                                <option value="Üçgen Mahallesi">Üçgen Mahallesi</option>
+                                <option value="Varlık Mahallesi">Varlık Mahallesi</option>
+                                <option value="Yıldız Mahallesi">Yıldız Mahallesi</option>
+                                <option value="Ahatlı Mahallesi">Ahatlı Mahallesi</option>
+                                <option value="Aktoprak Mahallesi">Aktoprak Mahallesi</option>
+                                <option value="Altıayak Mahallesi">Altıayak Mahallesi</option>
+                                <option value="Altınova Düden Mahallesi">Altınova Düden Mahallesi</option>
+                                <option value="Altınova Orta Mahallesi">Altınova Orta Mahallesi</option>
+                                <option value="Ayanoğlu Mahallesi">Ayanoğlu Mahallesi</option>
+                                <option value="Baraj Mahallesi">Baraj Mahallesi</option>
+                                <option value="Çalış Mahallesi">Çalış Mahallesi</option>
+                                <option value="Ermenköy Mahallesi">Ermenköy Mahallesi</option>
+                                <option value="Fevzi Çakmak Mahallesi">Fevzi Çakmak Mahallesi</option>
+                                <option value="Gazi Mahallesi">Gazi Mahallesi</option>
+                                <option value="Gaziler Mahallesi">Gaziler Mahallesi</option>
+                                <option value="Gökkuşağı Mahallesi">Gökkuşağı Mahallesi</option>
+                                <option value="Güney Mahallesi">Güney Mahallesi</option>
+                                <option value="Kanal Mahallesi">Kanal Mahallesi</option>
+                                <option value="Karşıyaka Mahallesi">Karşıyaka Mahallesi</option>
+                                <option value="Kültür Mahallesi">Kültür Mahallesi</option>
+                                <option value="Kuzeyyaka Mahallesi">Kuzeyyaka Mahallesi</option>
+                                <option value="Yeni Mahallesi">Yeni Mahallesi</option>
+                                <option value="Yeşiltepe Mahallesi">Yeşiltepe Mahallesi</option>
+                                <option value="Aksağdamlar Mahallesi">Aksağdamlar Mahallesi</option>
+                                <option value="Akkuyu Mahallesi">Akkuyu Mahallesi</option>
+                                <option value="Altınkum Mahallesi">Altınkum Mahallesi</option>
+                                <option value="Arapsuyu Mahallesi">Arapsuyu Mahallesi</option>
+                                <option value="Aşağıkaraman Mahallesi">Aşağıkaraman Mahallesi</option>
+                                <option value="Aydınlık Mahallesi">Aydınlık Mahallesi</option>
+                                <option value="Bahtılı Mahallesi">Bahtılı Mahallesi</option>
+                                <option value="Çağlarca Mahallesi">Çağlarca Mahallesi</option>
+                                <option value="Çakırlar Mahallesi">Çakırlar Mahallesi</option>
+                                <option value="Çamlıbel Mahallesi">Çamlıbel Mahallesi</option>
+                                <option value="Çitdibi Mahallesi">Çitdibi Mahallesi</option>
+                                <option value="Dağ Mahallesi">Dağ Mahallesi</option>
+                                <option value="Demircilik Mahallesi">Demircilik Mahallesi</option>
+                                <option value="Doyran Mahallesi">Doyran Mahallesi</option>
+                                <option value="Geyikbayırı Mahallesi">Geyikbayırı Mahallesi</option>
+                                <option value="Gökçam Mahallesi">Gökçam Mahallesi</option>
+                                <option value="Gökdere Mahallesi">Gökdere Mahallesi</option>
+                                <option value="Gürsu Mahallesi">Gürsu Mahallesi</option>
+                                <option value="Liman Mahallesi">Liman Mahallesi</option>
+                                <option value="Molla Yusuf Mahallesi">Molla Yusuf Mahallesi</option>
+                                <option value="Öğretmenevleri Mahallesi">Öğretmenevleri Mahallesi</option>
+                                <option value="Pınarbaşı Mahallesi">Pınarbaşı Mahallesi</option>
+                                <option value="Siteler Mahallesi">Siteler Mahallesi</option>
+                                <option value="Sarısu Mahallesi">Sarısu Mahallesi</option>
+                                <option value="Toros Mahallesi">Toros Mahallesi</option>
+                                <option value="Uluç Mahallesi">Uluç Mahallesi</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Okul *</label>
+                            <select id="okul" required>
+                                <optgroup label="İlkokullar">
+                                    <option value="Altındağ İlkokulu">Altındağ İlkokulu</option>
+                                    <option value="Antbirlik İlkokulu">Antbirlik İlkokulu</option>
+                                    <option value="Barbaros İlkokulu">Barbaros İlkokulu</option>
+                                    <option value="Cumhuriyet İlkokulu">Cumhuriyet İlkokulu</option>
+                                    <option value="Dumlupınar İlkokulu">Dumlupınar İlkokulu</option>
+                                    <option value="Dutlubahçe İlkokulu">Dutlubahçe İlkokulu</option>
+                                    <option value="Gebizli Hasan Kaya İlkokulu">Gebizli Hasan Kaya İlkokulu</option>
+                                    <option value="Güzelbağ İlkokulu">Güzelbağ İlkokulu</option>
+                                    <option value="Güzeloba İlkokulu">Güzeloba İlkokulu</option>
+                                    <option value="Hakkı Tatoğlu İlkokulu">Hakkı Tatoğlu İlkokulu</option>
+                                    <option value="İstiklal İlkokulu">İstiklal İlkokulu</option>
+                                    <option value="Konuksever İlkokulu">Konuksever İlkokulu</option>
+                                    <option value="Muratpaşa İlkokulu">Muratpaşa İlkokulu</option>
+                                    <option value="Mustafa Asım Cula İlkokulu">Mustafa Asım Cula İlkokulu</option>
+                                    <option value="Muratpaşa Yenigöl İlkokulu">Muratpaşa Yenigöl İlkokulu</option>
+                                    <option value="Nadire Konuk ve Ali Oğuz Konuk İlkokulu">Nadire Konuk ve Ali Oğuz Konuk İlkokulu</option>
+                                    <option value="Namık Kemal İlkokulu">Namık Kemal İlkokulu</option>
+                                    <option value="Ramazan Savaş İlkokulu">Ramazan Savaş İlkokulu</option>
+                                    <option value="Yunus Emre İlkokulu">Yunus Emre İlkokulu</option>
+                                    <option value="Ahmet Leman Baydar İlkokulu">Ahmet Leman Baydar İlkokulu</option>
+                                    <option value="Altınova Ruhi Sunar İlkokulu">Altınova Ruhi Sunar İlkokulu</option>
+                                    <option value="Demirgül İlkokulu">Demirgül İlkokulu</option>
+                                    <option value="Kütükçü İlkokulu">Kütükçü İlkokulu</option>
+                                    <option value="Şehit İbrahim Barış Yurtseven İlkokulu">Şehit İbrahim Barış Yurtseven İlkokulu</option>
+                                    <option value="Abdurrahman Neriman Bileydi İlkokulu">Abdurrahman Neriman Bileydi İlkokulu</option>
+                                    <option value="Gazi Mustafa Kemal İlkokulu">Gazi Mustafa Kemal İlkokulu</option>
+                                    <option value="Gökçam İlkokulu">Gökçam İlkokulu</option>
+                                    <option value="Konyaaltı İlkokulu">Konyaaltı İlkokulu</option>
+                                    <option value="Leyla Kahraman Sevim Ertenü İlkokulu">Leyla Kahraman Sevim Ertenü İlkokulu</option>
+                                    <option value="Z. Marsel – Z. Denizhan Öner İlkokulu">Z. Marsel – Z. Denizhan Öner İlkokulu</option>
+                                </optgroup>
+                                <optgroup label="Ortaokullar">
+                                    <option value="Fatmagül Özpınar Ortaokulu">Fatmagül Özpınar Ortaokulu</option>
+                                    <option value="Gültekin Ortaokulu">Gültekin Ortaokulu</option>
+                                    <option value="Hasan Kaya Ortaokulu">Hasan Kaya Ortaokulu</option>
+                                    <option value="Kazım Şanöz Ortaokulu">Kazım Şanöz Ortaokulu</option>
+                                    <option value="Mehmet Kesikçi Ortaokulu">Mehmet Kesikçi Ortaokulu</option>
+                                    <option value="Merkez Ortaokulu">Merkez Ortaokulu</option>
+                                    <option value="Naciye Havva Manavuşak Ortaokulu">Naciye Havva Manavuşak Ortaokulu</option>
+                                    <option value="Necati ve Fatma Dölen Ortaokulu">Necati ve Fatma Dölen Ortaokulu</option>
+                                    <option value="Vali Hüsnü Tuğlu Ortaokulu">Vali Hüsnü Tuğlu Ortaokulu</option>
+                                    <option value="Yunus Emre Ortaokulu">Yunus Emre Ortaokulu</option>
+                                    <option value="Nebi Güney İmam Hatip Ortaokulu">Nebi Güney İmam Hatip Ortaokulu</option>
+                                    <option value="Alırıza Altıntaş Ortaokulu">Alırıza Altıntaş Ortaokulu</option>
+                                    <option value="Altınova Ortaokulu">Altınova Ortaokulu</option>
+                                    <option value="İsmail Hakkı Kaya Ortaokulu">İsmail Hakkı Kaya Ortaokulu</option>
+                                    <option value="Mimar Sinan Ortaokulu">Mimar Sinan Ortaokulu</option>
+                                    <option value="Varsak İmam Hatip Ortaokulu">Varsak İmam Hatip Ortaokulu</option>
+                                    <option value="Varsak Ortaokulu">Varsak Ortaokulu</option>
+                                    <option value="Doyran Ayten-Şevket Gülveren Ortaokulu">Doyran Ayten-Şevket Gülveren Ortaokulu</option>
+                                    <option value="Gazi Mustafa Kemal Ortaokulu">Gazi Mustafa Kemal Ortaokulu</option>
+                                <option value="Güzeloba Ortaokulu">Güzeloba Ortaokulu</option>
+                                    <option value="Konyaaltı Ortaokulu">Konyaaltı Ortaokulu</option>
+                                <option value="Sultan Efe Ortaokulu">Sultan Efe Ortaokulu</option>
+                                </optgroup>
+                                <optgroup label="Özel Okullar">
+                                <option value="Bahçeşehir Koleji">Bahçeşehir Koleji</option>
+                                <option value="Envar Koleji">Envar Koleji</option>
+                                <option value="Okyanus Koleji">Okyanus Koleji</option>
+                                    <option value="Özel Antalya Bilim Doğa İlkokulu">Özel Antalya Bilim Doğa İlkokulu</option>
+                                    <option value="Özel Antalya Bilim Doğa Ortaokulu">Özel Antalya Bilim Doğa Ortaokulu</option>
+                                    <option value="Özel Antalya Sınav İlkokulu">Özel Antalya Sınav İlkokulu</option>
+                                    <option value="Özel Antalya Sınav Ortaokulu">Özel Antalya Sınav Ortaokulu</option>
+                                    <option value="Özel Antalya Yeditepe Koleji İlkokulu">Özel Antalya Yeditepe Koleji İlkokulu</option>
+                                    <option value="Özel Antalya Yeditepe Koleji Ortaokulu">Özel Antalya Yeditepe Koleji Ortaokulu</option>
+                                    <option value="Özel Bilfen Antalya İlkokulu">Özel Bilfen Antalya İlkokulu</option>
+                                    <option value="Özel Bilfen Antalya Ortaokulu">Özel Bilfen Antalya Ortaokulu</option>
+                                    <option value="Özel Muratpaşa Birikim İlkokulu">Özel Muratpaşa Birikim İlkokulu</option>
+                                    <option value="Özel Muratpaşa Birikim Ortaokulu">Özel Muratpaşa Birikim Ortaokulu</option>
+                                    <option value="Özel Muratpaşa Uğur İlkokulu">Özel Muratpaşa Uğur İlkokulu</option>
+                                    <option value="Özel Muratpaşa Uğur Ortaokulu">Özel Muratpaşa Uğur Ortaokulu</option>
+                                    <option value="Özel Muratpaşa Vizyoner İlkokulu">Özel Muratpaşa Vizyoner İlkokulu</option>
+                                    <option value="Özel Muratpaşa Vizyoner Ortaokulu">Özel Muratpaşa Vizyoner Ortaokulu</option>
+                                <option value="TED Koleji">TED Koleji</option>
+                                    <option value="İstek Antalya Konyaaltı Yeditepe Koleji İlkokulu">İstek Antalya Konyaaltı Yeditepe Koleji İlkokulu</option>
+                                    <option value="İstek Antalya Konyaaltı Yeditepe Koleji Ortaokulu">İstek Antalya Konyaaltı Yeditepe Koleji Ortaokulu</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Bizi nereden buldunuz? *</label>
+                            <select id="kayitKaynagi" required>
+                                <option value="">Seçiniz...</option>
+                                <option value="Arkadaş Tavsiyesi">Arkadaş Tavsiyesi</option>
+                                <option value="Okul Tarama">Okul Tarama</option>
+                                <option value="El İlanı">El İlanı</option>
+                                <option value="Sosyal Medya">Sosyal Medya</option>
+                                <option value="Google">Google</option>
+                                <option value="Branda">Branda</option>
+                                <option value="Diğer">Diğer</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary">✅ Öğrenciyi Kaydet</button>
+            </form>
+        </div>
+
+        <div class="content students-section">
+            <h2 style="margin-bottom: 20px; color: #333;">Kayıtlı Öğrenciler</h2>
+            <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center;">
+                <div style="flex: 1;">
+                    <input type="text" id="searchInput" placeholder="🔍 Öğrenci ara (ad, soyad, TC, veli adı...)" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="btnAll" class="btn-filter" onclick="filterByStatus('all')">Tümü</button>
+                    <button id="btnActive" class="btn-filter active" onclick="filterByStatus('active')">Aktif</button>
+                    <button id="btnInactive" class="btn-filter" onclick="filterByStatus('inactive')">Pasif</button>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
+                <button class="btn-success" onclick="exportStudents('active')">📤 Aktif Excel</button>
+                <button class="btn-success" onclick="exportStudents('inactive')">📤 Pasif Excel</button>
+                <button class="btn-success" onclick="exportPayments('Borçlu')">📤 Borçlu Excel</button>
+                <button class="btn-success" onclick="exportPayments('Ödendi')">📤 Ödeme Excel</button>
+            </div>
+            <div class="students-grid" id="studentsList"></div>
+        </div>
+    </div>
+
+    <!-- Öğrenci Düzenle Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Öğrenci Düzenle</h2>
+                <span class="close-modal" onclick="closeEditModal()">&times;</span>
+            </div>
+            <form id="editForm">
+                <input type="hidden" id="editStudentId" />
+                
+                <div class="form-group">
+                    <label>Öğrenci Adı *</label>
+                    <input type="text" id="editStudentName" required />
+                </div>
+                
+                <div class="form-group">
+                    <label>Öğrenci Soyadı *</label>
+                    <input type="text" id="editStudentSurname" required />
+                </div>
+                
+                <div class="form-group">
+                    <label>TC Kimlik No *</label>
+                    <input type="text" id="editTcNo" maxlength="11" pattern="[0-9]{11}" title="11 haneli TC kimlik numarası giriniz" required />
+                </div>
+                
+                <div class="form-group">
+                    <label>Doğum Tarihi *</label>
+                    <input type="date" id="editBirthDate" required />
+                </div>
+                
+                <div class="form-group">
+                    <label>Grup *</label>
+                    <select id="editStudentGroup" required>
+                        <option value="">Seçiniz...</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Veli Adı Soyadı *</label>
+                    <input type="text" id="editParentName" required />
+                </div>
+                
+                <div class="form-group">
+                    <label>E-posta</label>
+                    <input type="email" id="editEmail" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Veli Telefon 1 *</label>
+                    <input type="tel" id="editParentPhone1" required />
+                </div>
+                
+                <div class="form-group">
+                    <label>Veli Telefon 2</label>
+                    <input type="tel" id="editParentPhone2" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Mahalle *</label>
+                    <select id="editMahalle" required>
+                        <option value="Altındağ Mahallesi">Altındağ Mahallesi</option>
+                        <option value="Bahçelievler Mahallesi">Bahçelievler Mahallesi</option>
+                        <option value="Balbey Mahallesi">Balbey Mahallesi</option>
+                        <option value="Barbaros Mahallesi">Barbaros Mahallesi</option>
+                        <option value="Cumhuriyet Mahallesi">Cumhuriyet Mahallesi</option>
+                        <option value="Deniz Mahallesi">Deniz Mahallesi</option>
+                        <option value="Dutlubahçe Mahallesi">Dutlubahçe Mahallesi</option>
+                        <option value="Elmali Mahallesi">Elmali Mahallesi</option>
+                        <option value="Etiler Mahallesi">Etiler Mahallesi</option>
+                        <option value="Gençlik Mahallesi">Gençlik Mahallesi</option>
+                        <option value="Haşimişcan Mahallesi">Haşimişcan Mahallesi</option>
+                        <option value="Kılınçarslan Mahallesi">Kılınçarslan Mahallesi</option>
+                        <option value="Kızılsaray Mahallesi">Kızılsaray Mahallesi</option>
+                        <option value="Konuksever Mahallesi">Konuksever Mahallesi</option>
+                        <option value="Kışla Mahallesi">Kışla Mahallesi</option>
+                        <option value="Memurevleri Mahallesi">Memurevleri Mahallesi</option>
+                        <option value="Sedir Mahallesi">Sedir Mahallesi</option>
+                        <option value="Şirinyalı Mahallesi">Şirinyalı Mahallesi</option>
+                        <option value="Tahılpazarı Mahallesi">Tahılpazarı Mahallesi</option>
+                        <option value="Üçgen Mahallesi">Üçgen Mahallesi</option>
+                        <option value="Varlık Mahallesi">Varlık Mahallesi</option>
+                        <option value="Yıldız Mahallesi">Yıldız Mahallesi</option>
+                        <option value="Ahatlı Mahallesi">Ahatlı Mahallesi</option>
+                        <option value="Aktoprak Mahallesi">Aktoprak Mahallesi</option>
+                        <option value="Altıayak Mahallesi">Altıayak Mahallesi</option>
+                        <option value="Altınova Düden Mahallesi">Altınova Düden Mahallesi</option>
+                        <option value="Altınova Orta Mahallesi">Altınova Orta Mahallesi</option>
+                        <option value="Ayanoğlu Mahallesi">Ayanoğlu Mahallesi</option>
+                        <option value="Baraj Mahallesi">Baraj Mahallesi</option>
+                        <option value="Çalış Mahallesi">Çalış Mahallesi</option>
+                        <option value="Ermenköy Mahallesi">Ermenköy Mahallesi</option>
+                        <option value="Fevzi Çakmak Mahallesi">Fevzi Çakmak Mahallesi</option>
+                        <option value="Gazi Mahallesi">Gazi Mahallesi</option>
+                        <option value="Gaziler Mahallesi">Gaziler Mahallesi</option>
+                        <option value="Gökkuşağı Mahallesi">Gökkuşağı Mahallesi</option>
+                        <option value="Güney Mahallesi">Güney Mahallesi</option>
+                        <option value="Kanal Mahallesi">Kanal Mahallesi</option>
+                        <option value="Karşıyaka Mahallesi">Karşıyaka Mahallesi</option>
+                        <option value="Kültür Mahallesi">Kültür Mahallesi</option>
+                        <option value="Kuzeyyaka Mahallesi">Kuzeyyaka Mahallesi</option>
+                        <option value="Yeni Mahallesi">Yeni Mahallesi</option>
+                        <option value="Yeşiltepe Mahallesi">Yeşiltepe Mahallesi</option>
+                        <option value="Aksağdamlar Mahallesi">Aksağdamlar Mahallesi</option>
+                        <option value="Akkuyu Mahallesi">Akkuyu Mahallesi</option>
+                        <option value="Altınkum Mahallesi">Altınkum Mahallesi</option>
+                        <option value="Arapsuyu Mahallesi">Arapsuyu Mahallesi</option>
+                        <option value="Aşağıkaraman Mahallesi">Aşağıkaraman Mahallesi</option>
+                        <option value="Aydınlık Mahallesi">Aydınlık Mahallesi</option>
+                        <option value="Bahtılı Mahallesi">Bahtılı Mahallesi</option>
+                        <option value="Çağlarca Mahallesi">Çağlarca Mahallesi</option>
+                        <option value="Çakırlar Mahallesi">Çakırlar Mahallesi</option>
+                        <option value="Çamlıbel Mahallesi">Çamlıbel Mahallesi</option>
+                        <option value="Çitdibi Mahallesi">Çitdibi Mahallesi</option>
+                        <option value="Dağ Mahallesi">Dağ Mahallesi</option>
+                        <option value="Demircilik Mahallesi">Demircilik Mahallesi</option>
+                        <option value="Doyran Mahallesi">Doyran Mahallesi</option>
+                        <option value="Geyikbayırı Mahallesi">Geyikbayırı Mahallesi</option>
+                        <option value="Gökçam Mahallesi">Gökçam Mahallesi</option>
+                        <option value="Gökdere Mahallesi">Gökdere Mahallesi</option>
+                        <option value="Gürsu Mahallesi">Gürsu Mahallesi</option>
+                        <option value="Liman Mahallesi">Liman Mahallesi</option>
+                        <option value="Molla Yusuf Mahallesi">Molla Yusuf Mahallesi</option>
+                        <option value="Öğretmenevleri Mahallesi">Öğretmenevleri Mahallesi</option>
+                        <option value="Pınarbaşı Mahallesi">Pınarbaşı Mahallesi</option>
+                        <option value="Siteler Mahallesi">Siteler Mahallesi</option>
+                        <option value="Sarısu Mahallesi">Sarısu Mahallesi</option>
+                        <option value="Toros Mahallesi">Toros Mahallesi</option>
+                        <option value="Uluç Mahallesi">Uluç Mahallesi</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Okul *</label>
+                    <select id="editOkul" required>
+                        <optgroup label="İlkokullar">
+                            <option value="Altındağ İlkokulu">Altındağ İlkokulu</option>
+                            <option value="Antbirlik İlkokulu">Antbirlik İlkokulu</option>
+                            <option value="Barbaros İlkokulu">Barbaros İlkokulu</option>
+                            <option value="Cumhuriyet İlkokulu">Cumhuriyet İlkokulu</option>
+                            <option value="Dumlupınar İlkokulu">Dumlupınar İlkokulu</option>
+                            <option value="Dutlubahçe İlkokulu">Dutlubahçe İlkokulu</option>
+                            <option value="Gebizli Hasan Kaya İlkokulu">Gebizli Hasan Kaya İlkokulu</option>
+                            <option value="Güzelbağ İlkokulu">Güzelbağ İlkokulu</option>
+                            <option value="Güzeloba İlkokulu">Güzeloba İlkokulu</option>
+                            <option value="Hakkı Tatoğlu İlkokulu">Hakkı Tatoğlu İlkokulu</option>
+                            <option value="İstiklal İlkokulu">İstiklal İlkokulu</option>
+                            <option value="Konuksever İlkokulu">Konuksever İlkokulu</option>
+                            <option value="Muratpaşa İlkokulu">Muratpaşa İlkokulu</option>
+                            <option value="Mustafa Asım Cula İlkokulu">Mustafa Asım Cula İlkokulu</option>
+                            <option value="Muratpaşa Yenigöl İlkokulu">Muratpaşa Yenigöl İlkokulu</option>
+                            <option value="Nadire Konuk ve Ali Oğuz Konuk İlkokulu">Nadire Konuk ve Ali Oğuz Konuk İlkokulu</option>
+                            <option value="Namık Kemal İlkokulu">Namık Kemal İlkokulu</option>
+                            <option value="Ramazan Savaş İlkokulu">Ramazan Savaş İlkokulu</option>
+                            <option value="Yunus Emre İlkokulu">Yunus Emre İlkokulu</option>
+                            <option value="Ahmet Leman Baydar İlkokulu">Ahmet Leman Baydar İlkokulu</option>
+                            <option value="Altınova Ruhi Sunar İlkokulu">Altınova Ruhi Sunar İlkokulu</option>
+                            <option value="Demirgül İlkokulu">Demirgül İlkokulu</option>
+                            <option value="Kütükçü İlkokulu">Kütükçü İlkokulu</option>
+                            <option value="Şehit İbrahim Barış Yurtseven İlkokulu">Şehit İbrahim Barış Yurtseven İlkokulu</option>
+                            <option value="Abdurrahman Neriman Bileydi İlkokulu">Abdurrahman Neriman Bileydi İlkokulu</option>
+                            <option value="Gazi Mustafa Kemal İlkokulu">Gazi Mustafa Kemal İlkokulu</option>
+                            <option value="Gökçam İlkokulu">Gökçam İlkokulu</option>
+                            <option value="Konyaaltı İlkokulu">Konyaaltı İlkokulu</option>
+                            <option value="Leyla Kahraman Sevim Ertenü İlkokulu">Leyla Kahraman Sevim Ertenü İlkokulu</option>
+                            <option value="Z. Marsel – Z. Denizhan Öner İlkokulu">Z. Marsel – Z. Denizhan Öner İlkokulu</option>
+                        </optgroup>
+                        <optgroup label="Ortaokullar">
+                            <option value="Fatmagül Özpınar Ortaokulu">Fatmagül Özpınar Ortaokulu</option>
+                            <option value="Gültekin Ortaokulu">Gültekin Ortaokulu</option>
+                            <option value="Hasan Kaya Ortaokulu">Hasan Kaya Ortaokulu</option>
+                            <option value="Kazım Şanöz Ortaokulu">Kazım Şanöz Ortaokulu</option>
+                            <option value="Mehmet Kesikçi Ortaokulu">Mehmet Kesikçi Ortaokulu</option>
+                            <option value="Merkez Ortaokulu">Merkez Ortaokulu</option>
+                            <option value="Naciye Havva Manavuşak Ortaokulu">Naciye Havva Manavuşak Ortaokulu</option>
+                            <option value="Necati ve Fatma Dölen Ortaokulu">Necati ve Fatma Dölen Ortaokulu</option>
+                            <option value="Vali Hüsnü Tuğlu Ortaokulu">Vali Hüsnü Tuğlu Ortaokulu</option>
+                            <option value="Yunus Emre Ortaokulu">Yunus Emre Ortaokulu</option>
+                            <option value="Nebi Güney İmam Hatip Ortaokulu">Nebi Güney İmam Hatip Ortaokulu</option>
+                            <option value="Alırıza Altıntaş Ortaokulu">Alırıza Altıntaş Ortaokulu</option>
+                            <option value="Altınova Ortaokulu">Altınova Ortaokulu</option>
+                            <option value="İsmail Hakkı Kaya Ortaokulu">İsmail Hakkı Kaya Ortaokulu</option>
+                            <option value="Mimar Sinan Ortaokulu">Mimar Sinan Ortaokulu</option>
+                            <option value="Varsak İmam Hatip Ortaokulu">Varsak İmam Hatip Ortaokulu</option>
+                            <option value="Varsak Ortaokulu">Varsak Ortaokulu</option>
+                            <option value="Doyran Ayten-Şevket Gülveren Ortaokulu">Doyran Ayten-Şevket Gülveren Ortaokulu</option>
+                            <option value="Gazi Mustafa Kemal Ortaokulu">Gazi Mustafa Kemal Ortaokulu</option>
+                            <option value="Güzeloba Ortaokulu">Güzeloba Ortaokulu</option>
+                            <option value="Konyaaltı Ortaokulu">Konyaaltı Ortaokulu</option>
+                            <option value="Sultan Efe Ortaokulu">Sultan Efe Ortaokulu</option>
+                        </optgroup>
+                        <optgroup label="Özel Okullar">
+                            <option value="Bahçeşehir Koleji">Bahçeşehir Koleji</option>
+                            <option value="Envar Koleji">Envar Koleji</option>
+                            <option value="Okyanus Koleji">Okyanus Koleji</option>
+                            <option value="Özel Antalya Bilim Doğa İlkokulu">Özel Antalya Bilim Doğa İlkokulu</option>
+                            <option value="Özel Antalya Bilim Doğa Ortaokulu">Özel Antalya Bilim Doğa Ortaokulu</option>
+                            <option value="Özel Antalya Sınav İlkokulu">Özel Antalya Sınav İlkokulu</option>
+                            <option value="Özel Antalya Sınav Ortaokulu">Özel Antalya Sınav Ortaokulu</option>
+                            <option value="Özel Antalya Yeditepe Koleji İlkokulu">Özel Antalya Yeditepe Koleji İlkokulu</option>
+                            <option value="Özel Antalya Yeditepe Koleji Ortaokulu">Özel Antalya Yeditepe Koleji Ortaokulu</option>
+                            <option value="Özel Bilfen Antalya İlkokulu">Özel Bilfen Antalya İlkokulu</option>
+                            <option value="Özel Bilfen Antalya Ortaokulu">Özel Bilfen Antalya Ortaokulu</option>
+                            <option value="Özel Muratpaşa Birikim İlkokulu">Özel Muratpaşa Birikim İlkokulu</option>
+                            <option value="Özel Muratpaşa Birikim Ortaokulu">Özel Muratpaşa Birikim Ortaokulu</option>
+                            <option value="Özel Muratpaşa Uğur İlkokulu">Özel Muratpaşa Uğur İlkokulu</option>
+                            <option value="Özel Muratpaşa Uğur Ortaokulu">Özel Muratpaşa Uğur Ortaokulu</option>
+                            <option value="Özel Muratpaşa Vizyoner İlkokulu">Özel Muratpaşa Vizyoner İlkokulu</option>
+                            <option value="Özel Muratpaşa Vizyoner Ortaokulu">Özel Muratpaşa Vizyoner Ortaokulu</option>
+                            <option value="TED Koleji">TED Koleji</option>
+                            <option value="İstek Antalya Konyaaltı Yeditepe Koleji İlkokulu">İstek Antalya Konyaaltı Yeditepe Koleji İlkokulu</option>
+                            <option value="İstek Antalya Konyaaltı Yeditepe Koleji Ortaokulu">İstek Antalya Konyaaltı Yeditepe Koleji Ortaokulu</option>
+                        </optgroup>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Bizi nereden buldunuz?</label>
+                    <select id="editKayitKaynagi">
+                        <option value="">Seçiniz...</option>
+                        <option value="Arkadaş Tavsiyesi">Arkadaş Tavsiyesi</option>
+                        <option value="Okul Tarama">Okul Tarama</option>
+                        <option value="El İlanı">El İlanı</option>
+                        <option value="Sosyal Medya">Sosyal Medya</option>
+                        <option value="Google">Google</option>
+                        <option value="Branda">Branda</option>
+                        <option value="Diğer">Diğer</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Ayrılma Tarihi</label>
+                    <input type="date" id="editAyrilmaTarihi" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Notlar</label>
+                    <textarea id="editNotlar" rows="3"></textarea>
+                </div>
+                
+                <button type="submit" class="btn-primary">💾 Güncelle</button>
+                <button type="button" class="btn-danger" onclick="closeEditModal()">İptal</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Grup Değiştir Modal -->
+    <div id="groupChangeModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Grup Değiştir</h2>
+                <span class="close-modal" onclick="closeGroupModal()">&times;</span>
+            </div>
+            <form id="groupChangeForm">
+                <input type="hidden" id="changeStudentId" />
+                
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <p><strong id="changeStudentName"></strong></p>
+                    <p style="color: #666; margin-top: 5px;">
+                        Şu anki grup: <span id="currentGroupName" style="font-weight: bold; color: #667eea;"></span>
+                    </p>
+                </div>
+
+                <div class="form-group">
+                    <label>Yeni Grup *</label>
+                    <select id="newGroup" required>
+                        <option value="">Seçiniz...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Açıklama</label>
+                    <textarea id="changeReason" rows="3" placeholder="Grup değişikliği nedeni..."></textarea>
+                </div>
+
+                <button type="submit" class="btn-primary">✅ Grup Değiştir</button>
+                <button type="button" class="btn-danger" onclick="closeGroupModal()">İptal</button>
+            </form>
+        </div>
+    </div>
+    <!-- Öğrenci Detay Modal -->
+    <div id="studentDetailModal" class="modal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h2>📊 Öğrenci Detayları</h2>
+                <span class="close-modal" onclick="closeStudentDetailModal()">&times;</span>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px;">
+                <h3 id="detailStudentName" style="color: #667eea; margin-bottom: 10px;"></h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <p><strong>TC:</strong> <span id="detailTcNo"></span></p>
+                    <p><strong>Doğum Tarihi:</strong> <span id="detailBirthDate"></span></p>
+                    <p><strong>Durum:</strong> <span id="detailDurum"></span></p>
+                    <p><strong>Grup:</strong> <span id="detailGroup"></span></p>
+                    <p><strong>Kayıt Tarihi:</strong> <span id="detailKayitTarihi"></span></p>
+                    <p><strong>Son Aktif:</strong> <span id="detailLastActive"></span></p>
+                    <p><strong>Son Pasif:</strong> <span id="detailLastInactive"></span></p>
+                    <p><strong>Ayrılma Tarihi:</strong> <span id="detailAyrilmaTarihi"></span></p>
+                    <p><strong>Veli:</strong> <span id="detailVeli"></span></p>
+                    <p><strong>Telefon:</strong> <span id="detailPhone"></span></p>
+                    <p><strong>Kayıt Kaynağı:</strong> <span id="detailKayitKaynagi"></span></p>
+                </div>
+            </div>
+            
+            <h3 style="margin-bottom: 15px;">💰 Dönem Ödemeleri</h3>
+            <div class="table-wrap">
+            <table style="width: 100%;">
+                <thead>
+                    <tr>
+                        <th>Dönem</th>
+                        <th>Tutar</th>
+                        <th>Durum</th>
+                        <th>Ödeme Tarihi</th>
+                        <th>İşlem</th>
+                    </tr>
+                </thead>
+                <tbody id="studentPaymentsList"></tbody>
+            </table>
+            </div>
+            <div id="studentStatusHistory"></div>
+            <button class="btn-danger" onclick="closeStudentDetailModal()" style="margin-top: 20px; width: 100%;">Kapat</button>
+        </div>
+    </div>
+    <!-- Pasif Yapma Modal -->
+    <div id="statusModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>⏸️ Öğrenciyi Pasif Yap</h2>
+                <span class="close-modal" onclick="closeStatusModal()">&times;</span>
+            </div>
+            <form id="statusForm">
+                <input type="hidden" id="statusStudentId" />
+                
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 id="statusStudentName" style="color: #667eea;"></h3>
+                </div>
+
+                <div class="form-group">
+                    <label>Pasif Yapma Sebebi *</label>
+                    <select id="statusSebep" required>
+                        <option value="">Seçiniz...</option>
+                        <option value="Tatile çıktı">Tatile çıktı</option>
+                        <option value="Futbolu bıraktı">Futbolu bıraktı</option>
+                        <option value="Maddi durum">Maddi durum</option>
+                        <option value="Başka futbol okuluna geçti">Başka futbol okuluna geçti</option>
+                        <option value="Antrenör problemi">Antrenör problemi</option>
+                        <option value="Diğer">Diğer</option>
+                    </select>
+                </div>
+
+                <div class="form-group" id="aciklamaGroup" style="display:none;">
+                    <label>Açıklama</label>
+                    <textarea id="statusAciklama" rows="3" placeholder="Detaylı açıklama yazınız..."></textarea>
+                </div>
+
+                <button type="submit" class="btn-danger" style="width: 100%;">⏸️ Pasif Yap</button>
+                <button type="button" class="btn-primary" onclick="closeStatusModal()" style="width: 100%; margin-top: 10px;">İptal</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Aktif Yapma Modal -->
+    <div id="activeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>▶️ Öğrenciyi Aktif Yap</h2>
+                <span class="close-modal" onclick="closeActiveModal()">&times;</span>
+            </div>
+            <form id="activeForm">
+                <input type="hidden" id="activeStudentId" />
+                
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 id="activeStudentName" style="color: #28a745;"></h3>
+                    <p style="color: #666; margin-top: 5px;">Gruba yeniden atanacak</p>
+                </div>
+
+                <div class="form-group">
+                    <label>Grup Seçin *</label>
+                    <select id="activeGroupId" required>
+                        <option value="">Seçiniz...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Açıklama</label>
+                    <textarea id="activeAciklama" rows="2" placeholder="Not ekleyebilirsiniz..."></textarea>
+                </div>
+
+                <button type="submit" class="btn-success" style="width: 100%;">▶️ Aktif Yap</button>
+                <button type="button" class="btn-danger" onclick="closeActiveModal()" style="width: 100%; margin-top: 10px;">İptal</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Makbuz Gönder Modal (E-posta + SMS) -->
+    <div id="emailReceiptModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📤 Makbuz Gönder</h2>
+                <span class="close-modal" onclick="closeEmailModal()">&times;</span>
+            </div>
+            <input type="hidden" id="emailReceiptPaymentId">
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <p><strong>Öğrenci:</strong> <span id="emailReceiptStudentName"></span></p>
+                <p><strong>Dönem:</strong> <span id="emailReceiptPeriodName"></span></p>
+                <p><strong>Telefon:</strong> <span id="emailReceiptPhone"></span></p>
+            </div>
+            <div class="form-group">
+                <label>E-posta (varsa gönderilir, yoksa sadece SMS)</label>
+                <input type="email" id="emailReceiptTo" placeholder="veli@ornek.com">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button type="button" class="btn-success" id="emailReceiptBtn" onclick="sendReceiptEmail()" style="flex: 1;">📤 Gönder</button>
+                <button type="button" class="btn-danger" onclick="closeEmailModal()">İptal</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        let allStudents = [];
+
+        // Yetki kontrolü
+        (function() {
+            const user = localStorage.getItem('currentUser');
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const userData = JSON.parse(user);
+            document.getElementById('currentUserName').textContent = userData.adSoyad;
+        })();
+
+        // Menü ortak dosyadan yüklenir
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        function showMessage(text) {
+            const msg = document.getElementById('successMessage');
+            msg.textContent = text;
+            msg.classList.add('show');
+            setTimeout(() => msg.classList.remove('show'), 3000);
+        }
+
+        function csvEscape(value) {
+            if (value === null || value === undefined) return '';
+            const str = String(value);
+            if (str.includes('"') || str.includes(';') || str.includes('\n')) {
+                return `"${str.replace(/"/g, '""')}"`;
+            }
+            return str;
+        }
+
+        function downloadCsv(headers, rows, filename) {
+            if (!rows || rows.length === 0) {
+                showMessage('❌ Dışa aktarılacak veri bulunamadı', 'error');
+                return;
+            }
+            const headerLine = headers.join(';');
+            const bodyLines = rows.map(row => headers.map(h => csvEscape(row[h])).join(';')).join('\n');
+            const csvContent = '\ufeff' + headerLine + '\n' + bodyLines;
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
+
+        async function fetchStudentsForExport() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            let url = `${API_URL}/students`;
+            if (user.rol === 'yonetici' && user.subeId) {
+                url += `?subeId=${user.subeId}`;
+            }
+            const response = await fetch(url);
+            return await response.json();
+        }
+
+        async function fetchPeriodPaymentsForExport() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            let url = `${API_URL}/period-payments`;
+            if (user.rol === 'yonetici' && user.subeId) {
+                url += `?subeId=${user.subeId}`;
+            }
+            const response = await fetch(url);
+            return await response.json();
+        }
+
+        async function exportStudents(status) {
+            try {
+                const students = await fetchStudentsForExport();
+                const filtered = students.filter(s => {
+                    if (status === 'active') return s.durum === 'Aktif';
+                    if (status === 'inactive') return s.durum !== 'Aktif';
+                    return true;
+                });
+
+                const rows = filtered.map(s => ({
+                    id: s.id,
+                    ad: s.ad,
+                    soyad: s.soyad,
+                    tcNo: s.tcNo || '',
+                    durum: s.durum,
+                    kayitTarihi: s.kayitTarihi ? new Date(s.kayitTarihi).toLocaleDateString('tr-TR') : '',
+                    ayrilmaTarihi: s.ayrilmaTarihi ? new Date(s.ayrilmaTarihi).toLocaleDateString('tr-TR') : '',
+                    veliAdi: s.veliAdi || '',
+                    veliTelefon1: s.veliTelefon1 || '',
+                    veliTelefon2: s.veliTelefon2 || '',
+                    email: s.email || '',
+                    okul: s.okul || '',
+                    mahalle: s.mahalle || '',
+                    subeId: s.subeId || '',
+                    groupId: s.groupId || '',
+                    kayitKaynagi: s.kayitKaynagi || ''
+                }));
+
+                const headers = [
+                    'id', 'ad', 'soyad', 'tcNo', 'durum', 'kayitTarihi', 'ayrilmaTarihi',
+                    'veliAdi', 'veliTelefon1', 'veliTelefon2', 'email', 'okul', 'mahalle',
+                    'subeId', 'groupId', 'kayitKaynagi'
+                ];
+
+                const date = new Date().toISOString().split('T')[0];
+                const filename = status === 'inactive'
+                    ? `pasif-ogrenciler-${date}.csv`
+                    : `aktif-ogrenciler-${date}.csv`;
+
+                downloadCsv(headers, rows, filename);
+            } catch (error) {
+                showMessage('❌ Excel dışa aktarma hatası: ' + error.message, 'error');
+            }
+        }
+
+        async function exportPayments(status) {
+            try {
+                const payments = await fetchPeriodPaymentsForExport();
+                const filtered = payments.filter(p => p.odemeDurumu === status);
+
+                const rows = filtered.map(p => ({
+                    paymentId: p.id,
+                    studentId: p.studentId,
+                    ad: p.ad,
+                    soyad: p.soyad,
+                    donemAdi: p.donemAdi,
+                    baslangicTarihi: p.baslangicTarihi ? new Date(p.baslangicTarihi).toLocaleDateString('tr-TR') : '',
+                    bitisTarihi: p.bitisTarihi ? new Date(p.bitisTarihi).toLocaleDateString('tr-TR') : '',
+                    tutar: p.tutar,
+                    odemeDurumu: p.odemeDurumu,
+                    odemeTarihi: p.odemeTarihi ? new Date(p.odemeTarihi).toLocaleDateString('tr-TR') : '',
+                    odemeYontemi: p.odemeYontemi || '',
+                    notlar: p.notlar || '',
+                    subeId: p.subeId || ''
+                }));
+
+                const headers = [
+                    'paymentId', 'studentId', 'ad', 'soyad', 'donemAdi', 'baslangicTarihi',
+                    'bitisTarihi', 'tutar', 'odemeDurumu', 'odemeTarihi', 'odemeYontemi',
+                    'notlar', 'subeId'
+                ];
+
+                const date = new Date().toISOString().split('T')[0];
+                const filename = status === 'Borçlu'
+                    ? `borclu-odemeler-${date}.csv`
+                    : `odeme-yapanlar-${date}.csv`;
+
+                downloadCsv(headers, rows, filename);
+            } catch (error) {
+                showMessage('❌ Excel dışa aktarma hatası: ' + error.message, 'error');
+            }
+        }
+
+        async function loadSubeler() {
+            try {
+                const response = await fetch(`${API_URL}/subeler/active`);
+                const subeler = await response.json();
+                
+                const select = document.getElementById('studentSube');
+                if (select) {
+                    select.innerHTML = '<option value="">Seçiniz...</option>' +
+                        subeler.map(s => `<option value="${s.id}">${esc(s.subeAdi)}</option>`).join('');
+                    
+                   // Yönetici ise kendi şubesi otomatik seçili
+                    const user = JSON.parse(localStorage.getItem('currentUser'));
+                    if (user.rol === 'yonetici' && user.subeId) {
+                        select.value = user.subeId;
+                        select.disabled = true;
+                        
+                        // Grupları manuel yükle
+                        const groupSelect = document.getElementById('studentGroup');
+
+                        groupSelect.disabled = false;
+                        loadGroupsBySube(user.subeId);
+                   
+                    }
+                }
+            } catch (error) {
+                console.error('Şubeler yüklenemedi:', error);
+            }
+        }
+
+        // Şube seçilince grupları filtrele
+        document.getElementById('studentSube')?.addEventListener('change', function() {
+            const subeId = this.value;
+            const groupSelect = document.getElementById('studentGroup');
+            
+            if (subeId) {
+                groupSelect.disabled = false;
+                loadGroupsBySube(subeId);
+            } else {
+                groupSelect.disabled = true;
+                groupSelect.innerHTML = '<option value="">Önce şube seçin</option>';
+            }
+        });
+
+        // Şubeye göre grupları yükle
+        async function loadGroupsBySube(subeId) {
+            try {
+                const response = await fetch(`${API_URL}/groups/active?subeId=${subeId}`);
+                const allGroups = await response.json();
+                const filteredGroups = allGroups.filter(g => g.subeId == subeId);
+                
+                const select = document.getElementById('studentGroup');
+                if (select) {
+                    select.innerHTML = '<option value="">Seçiniz...</option>' +
+                        filteredGroups.map(g => `<option value="${g.id}">${esc(g.groupName)}</option>`).join('');
+                }
+            } catch (error) {
+                console.error('Gruplar yüklenemedi:', error);
+            }
+        }
+
+        // Aktif grupları yükle
+        async function loadActiveGroups() {
+            try {
+                const user = JSON.parse(localStorage.getItem('currentUser'));
+                let url = `${API_URL}/groups/active`;
+                
+                // Yönetici ise sadece kendi şubesini göster
+                if (user.rol === 'yonetici' && user.subeId) {
+                    url += `?subeId=${user.subeId}`;
+                }
+                
+                const response = await fetch(url);
+                const groups = await response.json();
+                
+                const groupSelect = document.getElementById('studentGroup');
+                if (groupSelect) {
+                    groupSelect.innerHTML = '<option value="">Seçiniz...</option>' +
+                        groups.map(g => `<option value="${g.id}">${esc(g.groupName)}</option>`).join('');
+                }
+                
+                const editGroupSelect = document.getElementById('editStudentGroup');
+                if (editGroupSelect) {
+                    editGroupSelect.innerHTML = '<option value="">Seçiniz...</option>' +
+                        groups.map(g => `<option value="${g.id}">${esc(g.groupName)}</option>`).join('');
+                }
+            } catch (error) {
+                console.error('Gruplar yüklenirken hata:', error);
+            }
+        }
+
+        loadSubeler();
+        loadActiveGroups();
+
+        // Excel import
+        let selectedImportFile = null;
+        document.getElementById('downloadTemplateBtn').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const res = await fetch(`${API_URL}/students/import-template`, {
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                });
+                const blob = await res.blob();
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'ogrenci-sablon.xlsx';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch (err) {
+                showMessage('❌ Şablon indirilemedi: ' + err.message);
+            }
+        });
+        document.getElementById('selectFileBtn').addEventListener('click', () => document.getElementById('importFileInput').click());
+        document.getElementById('importFileInput').addEventListener('change', (e) => {
+            selectedImportFile = e.target.files[0];
+            document.getElementById('importBtn').disabled = !selectedImportFile;
+            document.getElementById('importResult').style.display = 'none';
+        });
+        document.getElementById('importBtn').addEventListener('click', async () => {
+            if (!selectedImportFile) return;
+            const btn = document.getElementById('importBtn');
+            btn.disabled = true;
+            btn.textContent = 'Yükleniyor...';
+            const resultEl = document.getElementById('importResult');
+            resultEl.style.display = 'none';
+            try {
+                const formData = new FormData();
+                formData.append('file', selectedImportFile);
+                const res = await fetch(`${API_URL}/students/import`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+                    body: formData
+                });
+                const data = await res.json().catch(() => ({}));
+                resultEl.style.display = 'block';
+                if (res.ok) {
+                    resultEl.style.background = '#d4edda';
+                    resultEl.style.color = '#155724';
+                    let msg = `✅ ${data.imported} öğrenci içe aktarıldı.`;
+                    if (data.errors && data.errors.length > 0) msg += `<br><small>${data.errors.length} satır atlandı: ${data.errors.slice(0, 3).map(e => e.msg).join('; ')}${data.errors.length > 3 ? '...' : ''}</small>`;
+                    if (data.parentCredentials && data.parentCredentials.length > 0) {
+                        msg += `<br><strong>TC olmayan veli şifreleri (veliye iletin):</strong><br><small>${data.parentCredentials.map(p => `Satır ${p.row} - ${esc(p.ogrenci)}: Kullanıcı: ${esc(p.kullaniciAdi)}, Şifre: ${esc(p.sifre)}`).join('<br>')}</small>`;
+                    }
+                    resultEl.innerHTML = msg;
+                    loadStudents();
+                    selectedImportFile = null;
+                    document.getElementById('importFileInput').value = '';
+                } else {
+                    resultEl.style.background = '#f8d7da';
+                    resultEl.style.color = '#721c24';
+                    resultEl.textContent = '❌ ' + (data.error || 'İçe aktarma başarısız');
+                }
+            } catch (err) {
+                resultEl.style.display = 'block';
+                resultEl.style.background = '#f8d7da';
+                resultEl.style.color = '#721c24';
+                resultEl.textContent = '❌ Hata: ' + err.message;
+            }
+            btn.disabled = false;
+            btn.textContent = '⬆️ İçe Aktar';
+        });
+
+        // Form gönderme
+       document.getElementById('studentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            const subeId = currentUser.rol === 'yonetici' && currentUser.subeId 
+                ? currentUser.subeId 
+                : parseInt(document.getElementById('studentSube').value);
+
+            const student = {
+                ad: document.getElementById('studentName').value,
+                soyad: document.getElementById('studentSurname').value,
+                tcNo: document.getElementById('tcNo').value,
+                dogumTarihi: document.getElementById('birthDate').value,
+                subeId: subeId,
+                groupId: parseInt(document.getElementById('studentGroup').value),
+                veliAdi: document.getElementById('parentName').value,
+                email: document.getElementById('email').value,
+                veliTelefon1: document.getElementById('parentPhone1').value,
+                veliTelefon2: document.getElementById('parentPhone2').value,
+                mahalle: document.getElementById('mahalle').value,
+                okul: document.getElementById('okul').value,
+                kayitKaynagi: document.getElementById('kayitKaynagi').value,
+                kayitTarihi: new Date().toISOString()
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/students`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(student)
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    let msg = '✅ Öğrenci başarıyla kaydedildi!';
+                    if (data.parentCredentials && data.parentCredentials.sifre) {
+                        msg += ` Veli girişi: Kullanıcı: ${data.parentCredentials.kullaniciAdi}, Şifre: ${data.parentCredentials.sifre} (veliye iletin)`;
+                    }
+                    showMessage(msg);
+                    document.getElementById('studentForm').reset();
+                    loadStudents();
+                } else {
+                    showMessage('❌ Kayıt başarısız!');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message);
+            }
+        });
+
+        async function loadStudents() {
+            try {
+                const user = JSON.parse(localStorage.getItem('currentUser'));
+                let url = `${API_URL}/students`;
+                
+                // Yönetici ise sadece kendi şubesini göster
+                if (user.rol === 'yonetici' && user.subeId) {
+                    url += `?subeId=${user.subeId}`;
+                }
+                // Admin ise tüm şubeleri göster (subeId parametresi yok)
+                
+                const response = await fetch(url);
+                allStudents = await response.json();
+                filterStudents();
+                updateStats();
+            } catch (error) {
+                console.error('Öğrenciler yüklenemedi:', error);
+            }
+        }
+
+        async function updateStats() {
+            try {
+                const user = JSON.parse(localStorage.getItem('currentUser'));
+                let url = `${API_URL}/students/stats`;
+                
+                // Yönetici ise sadece kendi şubesinin istatistiklerini göster
+                if (user.rol === 'yonetici' && user.subeId) {
+                    url += `?subeId=${user.subeId}`;
+                }
+                
+                const response = await fetch(url);
+                const stats = await response.json();
+                document.getElementById('totalStudents').innerHTML = `
+                    <span style="font-weight: bold;">Toplam: ${stats.total}</span> | 
+                    <span style="color: #d4edda;">Aktif: ${stats.active}</span> | 
+                    <span style="color: #f8d7da;">Pasif: ${stats.inactive}</span>
+                `;
+            } catch (error) {
+                console.error('İstatistikler yüklenemedi:', error);
+            }
+        }
+
+        let currentStatusFilter = 'active'; // Varsayılan: Aktif
+
+        document.getElementById('searchInput').addEventListener('input', filterStudents);
+
+        function filterByStatus(status) {
+            currentStatusFilter = status;
+            
+            // Buton stillerini güncelle
+            document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
+            if (status === 'all') document.getElementById('btnAll').classList.add('active');
+            if (status === 'active') document.getElementById('btnActive').classList.add('active');
+            if (status === 'inactive') document.getElementById('btnInactive').classList.add('active');
+            
+            filterStudents();
+        }
+
+        function filterStudents() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+
+            let filtered = allStudents.filter(student => {
+                // Durum filtresi
+                let matchesStatus = true;
+                if (currentStatusFilter === 'active') {
+                    matchesStatus = student.durum === 'Aktif';
+                } else if (currentStatusFilter === 'inactive') {
+                    matchesStatus = student.durum !== 'Aktif';
+                }
+                
+                // Arama filtresi
+                const matchesSearch = 
+                    student.ad.toLowerCase().includes(searchTerm) ||
+                    student.soyad.toLowerCase().includes(searchTerm) ||
+                    student.veliAdi.toLowerCase().includes(searchTerm) ||
+                    (student.tcNo && student.tcNo.includes(searchTerm));
+
+                return matchesStatus && matchesSearch;
+            });
+
+            displayStudents(filtered);
+        }
+
+        function displayStudents(students) {
+            const list = document.getElementById('studentsList');
+
+            if (students.length === 0) {
+                list.innerHTML = '<p style="text-align: center; color: #999; grid-column: 1/-1;">Öğrenci bulunamadı</p>';
+                return;
+            }
+
+            list.innerHTML = students.map(student => `
+                <div class="student-card">
+                    <h3 style="cursor: pointer; color: #667eea;" onclick="showStudentDetail(${student.id})">${esc(student.ad)} ${esc(student.soyad)} 👁️</h3>
+                    <div class="student-info-grid">
+                        <p><strong>TC:</strong> ${esc(student.tcNo || '-')}</p>
+                        <p><strong>Durum:</strong> <span style="color: ${student.durum === 'Aktif' ? '#28a745' : '#dc3545'}; font-weight: 600;">${esc(student.durum)}</span></p>
+                        <p><strong>Kayıt:</strong> ${student.kayitTarihi ? new Date(student.kayitTarihi).toLocaleDateString('tr-TR') : '-'}</p>
+                        <p><strong>Pasif:</strong> ${student.ayrilmaTarihi ? new Date(student.ayrilmaTarihi).toLocaleDateString('tr-TR') : '-'}</p>
+                        <p><strong>Okul:</strong> ${esc(student.okul || '-')}</p>
+                        <p><strong>Mahalle:</strong> ${esc(student.mahalle || '-')}</p>
+                        <p><strong>Veli:</strong> ${esc(student.veliAdi)}</p>
+                        <p><strong>Telefon:</strong> ${esc(student.veliTelefon1 || '-')}</p>
+                    </div>
+                   <div class="student-card-actions">
+                        <button class="btn-edit" onclick="editStudent(${student.id})">✏️ Düzenle</button>
+                        <button class="btn-success" onclick="changeGroup(${student.id})">🔄 Grup Değiştir</button>
+                        ${student.durum === 'Aktif' ? 
+                            `<button class="btn-danger" onclick="setInactive(${student.id})">⏸️ Pasif Yap</button>` :
+                            `<button class="btn-success" onclick="setActive(${student.id})">▶️ Aktif Yap</button>`
+                        }
+                        <button class="btn-danger" onclick="deleteStudent(${student.id})">🗑️ Sil</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function editStudent(id) {
+            const student = allStudents.find(s => s.id === id);
+            if (!student) return;
+
+            document.getElementById('editStudentId').value = student.id;
+            document.getElementById('editStudentName').value = student.ad;
+            document.getElementById('editStudentSurname').value = student.soyad;
+            document.getElementById('editTcNo').value = student.tcNo || '';
+            document.getElementById('editBirthDate').value = student.dogumTarihi;
+            document.getElementById('editParentName').value = student.veliAdi;
+            document.getElementById('editEmail').value = student.email || '';
+            document.getElementById('editParentPhone1').value = student.veliTelefon1 || '';
+            document.getElementById('editParentPhone2').value = student.veliTelefon2 || '';
+            document.getElementById('editMahalle').value = student.mahalle || '';
+            document.getElementById('editOkul').value = student.okul || '';
+            document.getElementById('editKayitKaynagi').value = student.kayitKaynagi || '';
+            
+            if (document.getElementById('editStudentGroup')) {
+                document.getElementById('editStudentGroup').value = student.groupId || '';
+            }
+            if (document.getElementById('editAyrilmaTarihi')) {
+                document.getElementById('editAyrilmaTarihi').value = student.ayrilmaTarihi || '';
+            }
+            if (document.getElementById('editNotlar')) {
+                document.getElementById('editNotlar').value = student.notlar || '';
+            }
+
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+        }
+
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const id = document.getElementById('editStudentId').value;
+            const student = {
+                ad: document.getElementById('editStudentName').value,
+                soyad: document.getElementById('editStudentSurname').value,
+                tcNo: document.getElementById('editTcNo').value,
+                dogumTarihi: document.getElementById('editBirthDate').value,
+                groupId: parseInt(document.getElementById('editStudentGroup').value),
+                veliAdi: document.getElementById('editParentName').value,
+                email: document.getElementById('editEmail').value,
+                veliTelefon1: document.getElementById('editParentPhone1').value,
+                veliTelefon2: document.getElementById('editParentPhone2').value,
+                mahalle: document.getElementById('editMahalle').value,
+                okul: document.getElementById('editOkul').value,
+                kayitKaynagi: document.getElementById('editKayitKaynagi').value,
+                ayrilmaTarihi: document.getElementById('editAyrilmaTarihi')?.value || null,
+                notlar: document.getElementById('editNotlar')?.value || ''
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/students/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(student)
+                });
+
+                if (response.ok) {
+                    showMessage('✅ Öğrenci başarıyla güncellendi!');
+                    closeEditModal();
+                    loadStudents();
+                } else {
+                    showMessage('❌ Güncelleme başarısız!');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message);
+            }
+        });
+
+        async function changeGroup(studentId) {
+            const student = allStudents.find(s => s.id === studentId);
+            if (!student) return;
+            
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            let url = `${API_URL}/groups/active`;
+            
+            // Yönetici ise sadece kendi şubesini göster
+            if (user.rol === 'yonetici' && user.subeId) {
+                url += `?subeId=${user.subeId}`;
+            }
+            
+            const response = await fetch(url);
+            const activeGroups = await response.json();
+            
+            document.getElementById('changeStudentId').value = student.id;
+            document.getElementById('changeStudentName').textContent = `${esc(student.ad)} ${esc(student.soyad)}`;
+            
+            const currentGroup = activeGroups.find(g => g.id === student.groupId);
+            document.getElementById('currentGroupName').textContent = currentGroup ? currentGroup.groupName : 'Grup atanmamış';
+            
+            const newGroupSelect = document.getElementById('newGroup');
+            newGroupSelect.innerHTML = '<option value="">Seçiniz...</option>' + 
+                activeGroups.filter(g => g.id !== student.groupId)
+                    .map(g => `<option value="${g.id}">${esc(g.groupName)}</option>`).join('');
+            
+            document.getElementById('changeReason').value = '';
+            document.getElementById('groupChangeModal').classList.add('active');
+        }
+
+        function closeGroupModal() {
+            document.getElementById('groupChangeModal').classList.remove('active');
+        }
+
+        document.getElementById('groupChangeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const studentId = parseInt(document.getElementById('changeStudentId').value);
+            const newGroupId = parseInt(document.getElementById('newGroup').value);
+            
+            try {
+                const student = allStudents.find(s => s.id === studentId);
+                const response = await fetch(`${API_URL}/students/${studentId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...student,
+                        groupId: newGroupId
+                    })
+                });
+                
+                if (response.ok) {
+                    showMessage('✅ Grup başarıyla değiştirildi!');
+                    closeGroupModal();
+                    loadStudents();
+                } else {
+                    showMessage('❌ Grup değiştirilemedi!');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message);
+            }
+        });
+     async function setInactive(studentId) {
+            const student = allStudents.find(s => s.id === studentId);
+            document.getElementById('statusStudentId').value = studentId;
+            document.getElementById('statusStudentName').textContent = `${student.ad} ${student.soyad}`;
+            document.getElementById('statusSebep').value = '';
+            document.getElementById('statusAciklama').value = '';
+            document.getElementById('aciklamaGroup').style.display = 'none';
+            document.getElementById('statusModal').classList.add('active');
+        }
+        
+        function closeStatusModal() {
+            document.getElementById('statusModal').classList.remove('active');
+        }
+        
+        // Sebep "Diğer" seçildiğinde açıklama alanını göster
+        document.getElementById('statusSebep').addEventListener('change', (e) => {
+            if (e.target.value === 'Diğer') {
+                document.getElementById('aciklamaGroup').style.display = 'block';
+            } else {
+                document.getElementById('aciklamaGroup').style.display = 'none';
+            }
+        });
+        
+        document.getElementById('statusForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const studentId = document.getElementById('statusStudentId').value;
+            const sebep = document.getElementById('statusSebep').value;
+            const aciklama = document.getElementById('statusAciklama').value;
+            
+            try {
+                const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+                const response = await fetch(`${API_URL}/students/${studentId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        durum: 'Pasif',
+                        ayrilmaTarihi: new Date().toISOString(),
+                        sebep: sebep,
+                        aciklama: aciklama || null,
+                        degistirenKullanici: currentUser.adSoyad
+                    })
+                });
+                
+                if (response.ok) {
+                    showMessage('✅ Öğrenci pasif yapıldı!');
+                    closeStatusModal();
+                    loadStudents();
+                } else {
+                    showMessage('❌ İşlem başarısız!', 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            }
+        });
+
+        async function setActive(studentId) {
+            const student = allStudents.find(s => s.id === studentId);
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            
+            // Aktif grupları yükle
+            let url = `${API_URL}/groups/active`;
+            if (currentUser.rol === 'yonetici' && currentUser.subeId) {
+                url += `?subeId=${currentUser.subeId}`;
+            }
+            
+            const groupsResponse = await fetch(url);
+            const activeGroups = await groupsResponse.json();
+            
+            document.getElementById('activeStudentId').value = studentId;
+            document.getElementById('activeStudentName').textContent = `${student.ad} ${student.soyad}`;
+            document.getElementById('activeAciklama').value = '';
+            
+            // Grup dropdown'ını doldur
+            const groupSelect = document.getElementById('activeGroupId');
+            groupSelect.innerHTML = '<option value="">Seçiniz...</option>' + 
+                activeGroups.map(g => `<option value="${g.id}">${g.groupName}</option>`).join('');
+            
+            document.getElementById('activeModal').classList.add('active');
+        }
+        
+        function closeActiveModal() {
+            document.getElementById('activeModal').classList.remove('active');
+        }
+
+        async function deleteStudent(id) {
+            if (!confirm('Bu öğrenciyi silmek istediğinizden emin misiniz?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/students/${id}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    showMessage('✅ Öğrenci silindi!');
+                    loadStudents();
+                } else {
+                    showMessage('❌ Silme işlemi başarısız!');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message);
+            }
+        }
+        document.getElementById('activeForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const studentId = document.getElementById('activeStudentId').value;
+            const groupId = document.getElementById('activeGroupId').value;
+            const aciklama = document.getElementById('activeAciklama').value;
+            
+            if (!groupId) {
+                showMessage('❌ Lütfen grup seçin!', 'error');
+                return;
+            }
+            
+            try {
+                const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+                const student = allStudents.find(s => s.id == studentId);
+                
+                // Önce durumu aktif yap
+                const statusResponse = await fetch(`${API_URL}/students/${studentId}/status`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        durum: 'Aktif',
+                        ayrilmaTarihi: null,
+                        sebep: 'Geri döndü',
+                        aciklama: aciklama || null,
+                        degistirenKullanici: currentUser.adSoyad
+                    })
+                });
+                
+                // Sonra gruba ata
+                const updateResponse = await fetch(`${API_URL}/students/${studentId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        ...student,
+                        durum: 'Aktif',
+                        groupId: parseInt(groupId),
+                        ayrilmaTarihi: null
+                    })
+                });
+                
+                // Aktif dönemler için orantılı borç oluştur
+                const debtsResponse = await fetch(`${API_URL}/students/${studentId}/create-debts`, {
+                    method: 'POST'
+                });
+                
+                if (statusResponse.ok && updateResponse.ok && debtsResponse.ok) {
+                    showMessage('✅ Öğrenci aktif yapıldı, gruba atandı ve borçlar oluşturuldu!');
+                    closeActiveModal();
+                    loadStudents();
+                } else {
+                    showMessage('❌ İşlem başarısız!', 'error');
+                }
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            }
+        });
+        // Öğrenci detay modal
+        async function showStudentDetail(studentId) {
+            const student = allStudents.find(s => s.id === studentId);
+            if (!student) return;
+            
+            // Öğrenci bilgilerini doldur
+            document.getElementById('detailStudentName').textContent = `${student.ad} ${student.soyad}`;
+            document.getElementById('detailTcNo').textContent = student.tcNo || '-';
+            document.getElementById('detailBirthDate').textContent = student.dogumTarihi ? new Date(student.dogumTarihi).toLocaleDateString('tr-TR') : '-';
+            document.getElementById('detailDurum').innerHTML = `<span style="color: ${student.durum === 'Aktif' ? '#28a745' : '#dc3545'}; font-weight: 600;">${esc(student.durum)}</span>`;
+            document.getElementById('detailKayitTarihi').textContent = student.kayitTarihi
+                ? new Date(student.kayitTarihi).toLocaleDateString('tr-TR')
+                : '-';
+            document.getElementById('detailAyrilmaTarihi').textContent = student.ayrilmaTarihi
+                ? new Date(student.ayrilmaTarihi).toLocaleDateString('tr-TR')
+                : '-';
+            
+            // Grup adını getir
+            try {
+                const groupsResponse = await fetch(`${API_URL}/groups/active`);
+                const groups = await groupsResponse.json();
+                const group = groups.find(g => g.id === student.groupId);
+                document.getElementById('detailGroup').textContent = group ? group.groupName : 'Atanmamış';
+            } catch (error) {
+                document.getElementById('detailGroup').textContent = '-';
+            }
+            
+            document.getElementById('detailVeli').textContent = student.veliAdi;
+            document.getElementById('detailPhone').textContent = student.veliTelefon1 || '-';
+            document.getElementById('detailKayitKaynagi').textContent = student.kayitKaynagi || '-';
+            
+            // Dönem ödemelerini getir
+            try {
+                const paymentsResponse = await fetch(`${API_URL}/students/${studentId}/period-payments`);
+                const payments = await paymentsResponse.json();
+                
+                // Öğrencinin durum geçmişini getir
+                const historyResponse = await fetch(`${API_URL}/students/${studentId}/status-history`);
+                const statusHistory = await historyResponse.json();
+                
+                const tbody = document.getElementById('studentPaymentsList');
+                
+              if (payments.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#999;">Henüz dönem ödemesi yok</td></tr>';
+                } else {
+                    tbody.innerHTML = payments.map(p => `
+                        <tr>
+                            <td><strong>${esc(p.donemAdi)}</strong><br>
+                                <small style="color: #666;">${new Date(p.baslangicTarihi).toLocaleDateString('tr-TR')} - ${new Date(p.bitisTarihi).toLocaleDateString('tr-TR')}</small>
+                            </td>
+                            <td><strong>${p.tutar.toFixed(2)} TL</strong></td>
+                            <td>
+                                ${p.odemeDurumu === 'Ödendi' ? 
+                                    '<span style="background: #d4edda; color: #155724; padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;">✅ Ödendi</span>' :
+                                    '<span style="background: #f8d7da; color: #721c24; padding: 5px 15px; border-radius: 20px; font-size: 12px; font-weight: 600;">❌ Borçlu</span>'
+                                }
+                            </td>
+                            <td>${p.odemeTarihi ? new Date(p.odemeTarihi).toLocaleDateString('tr-TR') : '-'}</td>
+                            <td>
+                                ${p.odemeDurumu === 'Borçlu' ? 
+                                    `<button class="btn-success" onclick="payFromDetail(${p.id}, '${esc(student.ad + ' ' + student.soyad)}', '${esc(p.donemAdi)}', ${p.tutar}, ${studentId})">💳 Öde</button>` :
+                                    `<span style="display:flex;gap:5px;"><button type="button" class="btn-primary" onclick="openReceipt(${p.id})" style="padding: 8px 15px;">📄 Makbuz</button><button type="button" class="btn-primary" onclick="openEmailModal(${p.id})" style="padding: 8px 15px; background: #17a2b8;">📤</button></span>`
+                                }
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+                
+                const lastActive = statusHistory.find(h => h.yeniDurum === 'Aktif');
+                const lastInactive = statusHistory.find(h => h.yeniDurum === 'Pasif');
+                document.getElementById('detailLastActive').textContent = lastActive
+                    ? new Date(lastActive.degisimTarihi).toLocaleDateString('tr-TR')
+                    : (student.kayitTarihi ? new Date(student.kayitTarihi).toLocaleDateString('tr-TR') : '-');
+                document.getElementById('detailLastInactive').textContent = lastInactive
+                    ? new Date(lastInactive.degisimTarihi).toLocaleDateString('tr-TR')
+                    : '-';
+
+                // Durum geçmişini doldur
+                const historyDiv = document.getElementById('studentStatusHistory');
+                historyDiv.innerHTML = `
+                    <h3 style="margin-top: 30px; padding-top: 20px; border-top: 2px solid #e9ecef;">📅 Durum Geçmişi</h3>
+                    <div style="margin-top: 15px;">
+                        <div style="background: #28a745; color: white; padding: 15px; border-radius: 10px; margin-bottom: 15px; border: 3px solid #fff;">
+                            <strong style="font-size: 18px;">🎯 İLK KAYIT TARİHİ:</strong><br>
+                            ${new Date(student.kayitTarihi).toLocaleDateString('tr-TR', {day: '2-digit', month: 'long', year: 'numeric'})} - ${new Date(student.kayitTarihi).toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'})}
+                        </div>
+                        ${statusHistory.length > 0 ? 
+                            statusHistory.map(h => `
+                                <div style="background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 10px; border-left: 4px solid ${h.yeniDurum === 'Aktif' ? '#28a745' : '#dc3545'};">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                        <span style="font-weight: bold; font-size: 16px; color: ${h.yeniDurum === 'Aktif' ? '#28a745' : '#dc3545'};">
+                                            ${h.yeniDurum === 'Aktif' ? '✅' : '⏸️'} ${esc(h.eskiDurum)} → ${esc(h.yeniDurum)}
+                                        </span>
+                                        <span style="font-size: 14px; color: #666; background: white; padding: 5px 10px; border-radius: 5px;">
+                                            📅 ${new Date(h.degisimTarihi).toLocaleDateString('tr-TR')} ${new Date(h.degisimTarihi).toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'})}
+                                        </span>
+                                    </div>
+                                    <div style="background: white; padding: 10px; border-radius: 5px; font-size: 14px;">
+                                        <p style="margin-bottom: 5px;"><strong>📝 Sebep:</strong> <span style="color: #667eea;">${esc(h.sebep || '-')}</span></p>
+                                        ${h.aciklama ? `<p style="margin-bottom: 5px;"><strong>💬 Açıklama:</strong> ${esc(h.aciklama)}</p>` : ''}
+                                        ${h.degistirenKullanici ? `<p style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #e9ecef; font-size: 12px; color: #999;">👤 İşlemi yapan: <strong>${esc(h.degistirenKullanici)}</strong></p>` : ''}
+                                    </div>
+                                </div>
+                            `).join('') :
+                            '<p style="color: #999;">Henüz durum değişikliği yok.</p>'
+                        }
+                    </div>
+                `;
+                
+            } catch (error) {
+                console.error('Ödemeler yüklenemedi:', error);
+                document.getElementById('studentPaymentsList').innerHTML = '<tr><td colspan="5" style="text-align:center; color:#dc3545;">Yükleme hatası</td></tr>';
+            }
+            
+            document.getElementById('studentDetailModal').classList.add('active');
+        }
+        
+        function closeStudentDetailModal() {
+            document.getElementById('studentDetailModal').classList.remove('active');
+        }
+
+        async function openEmailModal(paymentId) {
+            document.getElementById('emailReceiptPaymentId').value = paymentId;
+            document.getElementById('emailReceiptTo').value = '';
+            document.getElementById('emailReceiptStudentName').textContent = '...';
+            document.getElementById('emailReceiptPeriodName').textContent = '...';
+            document.getElementById('emailReceiptPhone').textContent = '...';
+            document.getElementById('emailReceiptModal').classList.add('active');
+            try {
+                const res = await fetch(`${API_URL}/period-payments/${paymentId}/receipt-info`);
+                if (res.ok) {
+                    const data = await res.json();
+                    document.getElementById('emailReceiptStudentName').textContent = data.studentName || '-';
+                    document.getElementById('emailReceiptPeriodName').textContent = data.periodName || '-';
+                    document.getElementById('emailReceiptPhone').textContent = data.phone ? (data.phone.length === 10 ? '0' + data.phone : data.phone) : '-';
+                    document.getElementById('emailReceiptTo').value = data.email || '';
+                }
+            } catch (e) {
+                showMessage('Bilgi alınamadı: ' + e.message);
+            }
+        }
+
+        function closeEmailModal() {
+            document.getElementById('emailReceiptModal').classList.remove('active');
+        }
+
+        async function sendReceiptEmail() {
+            const paymentId = document.getElementById('emailReceiptPaymentId').value;
+            const email = document.getElementById('emailReceiptTo').value.trim();
+            const btn = document.getElementById('emailReceiptBtn');
+            btn.disabled = true;
+            btn.textContent = 'Gönderiliyor...';
+            try {
+                const res = await fetch(`${API_URL}/period-payments/${paymentId}/send-receipt-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email || undefined })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (res.ok) {
+                    showMessage('✅ ' + (data.message || 'Makbuz gönderildi.'));
+                    closeEmailModal();
+                } else {
+                    showMessage('❌ ' + (data.error || 'Gönderilemedi'));
+                }
+            } catch (e) {
+                showMessage('❌ Hata: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '📤 Gönder';
+            }
+        }
+        
+        function payFromDetail(paymentId, studentName, periodName, amount, studentId) {
+            // Mevcut ödeme modal fonksiyonunu kullan, ama detay modal'ını da yenile
+            openPaymentModalFromDetail(paymentId, studentName, periodName, amount, studentId);
+        }
+        
+        function openPaymentModalFromDetail(paymentId, studentName, periodName, amount, studentId) {
+            // Ödeme modal'ını aç
+            document.getElementById('changeStudentId').value = studentId; // Detay refresh için
+            
+            // Basit ödeme formu oluştur (veya mevcut payment modal'ını kullan)
+            if (confirm(`${studentName} için ${periodName} dönemi ödemesini (${amount} TL) almak istiyor musunuz?\n\nÖdeme sonrası makbuz açılacak.`)) {
+                // Hızlı nakit ödeme
+                fetch(`${API_URL}/period-payments/${paymentId}/pay`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        odemeTarihi: new Date().toISOString().split('T')[0],
+                        odemeYontemi: 'Nakit',
+                        notlar: 'Hızlı ödeme'
+                    })
+                })
+                .then(response => response.json())
+                .then(() => {
+                    showMessage('✅ Ödeme kaydedildi!');
+                    openReceipt(paymentId);
+                    showStudentDetail(studentId); // Detayı yenile
+                    loadStudents(); // Ana listeyi yenile
+                })
+                .catch(error => {
+                    showMessage('❌ Hata: ' + error.message);
+                });
+            }
+        }
+
+       loadStudents();
+        
+        // Sayfa yüklendiğinde aktif öğrencileri göster
+        setTimeout(() => {
+            filterByStatus('active');
+        }, 500);
+    </script>
+</body>
+</html>

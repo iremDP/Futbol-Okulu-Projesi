@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kullanıcı Yönetimi - Futbol Okulu</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .logout-btn {
+            padding: 10px 20px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .logout-btn:hover {
+            background: #c82333;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+
+        .nav-links a {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .nav-links a:hover {
+            background: #5568d3;
+        }
+
+        .nav-links a.active {
+            background: #dc3545;
+        }
+
+        .content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .tab {
+            padding: 15px 30px;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .tab:hover {
+            color: #667eea;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .form-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 5px;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-edit {
+            background: #ffc107;
+            color: #333;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-edit:hover {
+            background: #e0a800;
+        }
+
+        .user-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .user-card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .user-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+
+        .user-card-actions {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .role-admin {
+            background: #dc3545;
+            color: white;
+        }
+
+        .role-yonetici {
+            background: #667eea;
+            color: white;
+        }
+
+        .role-antrenor {
+            background: #28a745;
+            color: white;
+        }
+
+        .role-veli {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .success-message {
+            background: #4caf50;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: #667eea;
+        }
+
+        .close-modal {
+            font-size: 28px;
+            cursor: pointer;
+            color: #999;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .warning-box {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .warning-box strong {
+            color: #856404;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">⚽ Kullanıcı Yönetimi</div>
+            <div id="navMenu"></div>
+            <div class="user-info">
+                <span id="currentUserName"></span>
+                <button class="logout-btn" onclick="logout()">Çıkış</button>
+            </div>
+        </div>
+
+        <div class="content">
+            <div id="mustChangePasswordBanner" class="warning-box" style="display: none;">
+                <strong>⚠️ Güvenlik:</strong> Varsayılan admin şifresini kullanıyorsunuz. Lütfen aşağıdan kendi kullanıcınızı düzenleyip şifrenizi değiştirin.
+            </div>
+            <div class="tabs">
+                <button class="tab active" onclick="showTab('list')">📋 Kullanıcı Listesi</button>
+                <button class="tab" onclick="showTab('new')">➕ Yeni Kullanıcı</button>
+            </div>
+
+            <div id="successMessage" class="success-message"></div>
+
+            <!-- Kullanıcı Listesi -->
+            <div id="list" class="tab-content active">
+                <h2 style="margin-bottom: 20px; color: #333;">Kayıtlı Kullanıcılar</h2>
+                
+                <!-- Filtre ve Arama -->
+                <div style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center;">
+                    <div style="flex: 1;">
+                        <input type="text" id="searchInput" placeholder="🔍 Kullanıcı ara (ad, soyad, kullanıcı adı...)" 
+                               style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
+                    </div>
+                    <div>
+                        <select id="roleFilter" style="padding: 12px 20px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px; min-width: 150px;">
+                            <option value="">Tüm Roller</option>
+                            <option value="admin">Admin</option>
+                            <option value="yonetici">Yönetici</option>
+                            <option value="antrenor">Antrenör</option>
+                            <option value="veli">Veli</option>
+                        </select>
+                    </div>
+                    <div>
+                        <select id="subeFilter" style="padding: 12px 20px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px; min-width: 180px; display: none;">
+                            <option value="">Tüm Şubeler</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div id="usersList"></div>
+            </div>
+
+            <!-- Yeni Kullanıcı -->
+            <div id="new" class="tab-content">
+                <h2 style="margin-bottom: 20px; color: #333;">Yeni Kullanıcı Ekle</h2>
+                
+                <div class="warning-box">
+                    <strong>⚠️ Dikkat:</strong> Rol seçimi dikkatli yapılmalıdır. Her rolün farklı yetkileri vardır.
+                </div>
+
+                <form id="userForm">
+                    <div class="form-section">
+                        <h3>👤 Kullanıcı Bilgileri</h3>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Ad Soyad *</label>
+                                <input type="text" id="fullName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Rol *</label>
+                                <select id="role" required>
+                                    <option value="">Seçiniz...</option>
+                                    <option value="admin">👑 Admin (Tam Yetki)</option>
+                                    <option value="yonetici">🏢 Şube Yöneticisi</option>
+                                    <option value="antrenor">🏃 Antrenör</option>
+                                    <option value="veli">👨‍👩‍👧 Veli</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" id="subeSection" style="display: none;">
+                            <label>Şube *</label>
+                            <select id="subeSelect">
+                                <option value="">Seçiniz...</option>
+                            </select>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Kullanıcı Adı *</label>
+                                <input type="text" id="username" required>
+                            </div>
+                            <div class="form-group">
+                                <label>Şifre *</label>
+                                <input type="text" id="password" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Telefon</label>
+                                <input type="tel" id="phone" placeholder="0532 123 45 67">
+                            </div>
+                            <div class="form-group">
+                                <label>E-posta</label>
+                                <input type="email" id="email">
+                            </div>
+                        </div>
+
+                        <div id="parentSection" style="display: none;">
+                            <div class="form-group">
+                                <label>Bağlı Sporcu (Sadece Veli İçin)</label>
+                                <select id="studentSelect">
+                                    <option value="">Seçiniz...</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn-primary">💾 Kullanıcı Oluştur</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Düzenleme Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Kullanıcı Düzenle</h2>
+                <span class="close-modal" onclick="closeEditModal()">&times;</span>
+            </div>
+            <form id="editForm">
+                <input type="hidden" id="editUserId">
+                
+                <div class="form-section">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Ad Soyad *</label>
+                            <input type="text" id="editFullName" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Rol *</label>
+                            <select id="editRole" required>
+                                <option value="admin">👑 Admin</option>
+                                <option value="yonetici">🏢 Yönetici</option>
+                                <option value="antrenor">🏃 Antrenör</option>
+                                <option value="veli">👨‍👩‍👧 Veli</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Şube</label>
+                        <select id="editSubeId">
+                            <option value="">Tüm Şubeler</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Kullanıcı Adı *</label>
+                            <input type="text" id="editUsername" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Şifre *</label>
+                            <input type="text" id="editPassword" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Telefon</label>
+                            <input type="tel" id="editPhone">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>E-posta</label>
+                        <input type="email" id="editEmail">
+                    </div>
+
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="editActive"> Aktif
+                        </label>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-primary">💾 Güncelle</button>
+                <button type="button" class="btn-danger" onclick="closeEditModal()">İptal</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        let currentUser = null;
+        let allUsers = [];
+        let allStudents = [];
+        // Menü ortak dosyadan yüklenir
+        // Sayfa yüklendiğinde
+        checkAuth();
+        loadData();
+        loadSubeler();
+
+        // Yetki kontrolü
+        function checkAuth() {
+            const user = localStorage.getItem('currentUser');
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            currentUser = JSON.parse(user);
+            
+            // Admin ve yönetici görebilir
+            if (!['admin', 'yonetici'].includes(currentUser.rol)) {
+                alert('Bu sayfaya erişim yetkiniz yok!');
+                window.location.href = 'index.html';
+                return;
+            }
+            
+            document.getElementById('currentUserName').textContent = currentUser.adSoyad;
+            
+            // Yönetici ise sadece antrenör ekleyebilir
+            if (currentUser.rol === 'yonetici') {
+                setTimeout(() => {
+                    document.getElementById('role').innerHTML = '<option value="antrenor">🏃 Antrenör</option>';
+                    document.getElementById('editRole').innerHTML = '<option value="antrenor">🏃 Antrenör</option>';
+                    
+                    // Şube otomatik seçili ve disabled
+                    document.getElementById('subeSelect').value = currentUser.subeId;
+                    document.getElementById('subeSelect').disabled = true;
+                    document.getElementById('subeSection').style.display = 'block';
+                }, 100);
+            }
+        }
+
+        // Sekme değiştir
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(tabName).classList.add('active');
+            
+            document.querySelectorAll('.tab').forEach(tab => {
+                if ((tabName === 'list' && tab.textContent.includes('Listesi')) ||
+                    (tabName === 'new' && tab.textContent.includes('Yeni'))) {
+                    tab.classList.add('active');
+                }
+            });
+        }
+
+        // Verileri yükle
+        async function loadData() {
+            await loadSubeler();
+            await loadUsers();
+            await loadStudents();
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('changePassword') === '1' || localStorage.getItem('mustChangePassword') === '1') {
+                document.getElementById('mustChangePasswordBanner').style.display = 'block';
+            }
+        }
+
+        // Kullanıcıları yükle
+        async function loadUsers() {
+            try {
+                const user = JSON.parse(localStorage.getItem('currentUser'));
+                let url = `${API_URL}/users`;
+                
+                // Yönetici ise sadece kendi şubesini göster
+                if (user.rol === 'yonetici' && user.subeId) {
+                    url += `?subeId=${user.subeId}`;
+                }
+                // Admin ise tüm şubeleri göster
+                
+                const response = await fetch(url);
+                allUsers = await response.json();
+                displayUsers();
+            } catch (error) {
+                console.error('Kullanıcılar yüklenemedi:', error);
+            }
+        }
+
+        // Öğrencileri yükle (veli için)
+        async function loadStudents() {
+            try {
+                const response = await fetch(`${API_URL}/students`);
+                allStudents = await response.json();
+                
+                const select = document.getElementById('studentSelect');
+                select.innerHTML = '<option value="">Seçiniz...</option>';
+                allStudents.forEach(student => {
+                    select.innerHTML += `<option value="${student.id}">${esc(student.ad)} ${esc(student.soyad)}</option>`;
+                });
+            } catch (error) {
+                console.error('Öğrenciler yüklenemedi:', error);
+            }
+        }
+
+        // Şubeleri yükle
+        async function loadSubeler() {
+            try {
+                const response = await fetch(`${API_URL}/subeler/active`);
+                allSubeler = await response.json();
+                
+                const select = document.getElementById('subeSelect');
+                select.innerHTML = '<option value="">Seçiniz...</option>';
+                allSubeler.forEach(sube => {
+                    select.innerHTML += `<option value="${sube.id}">${esc(sube.subeAdi)}</option>`;
+                });
+
+                const subeFilter = document.getElementById('subeFilter');
+                if (subeFilter && currentUser.rol === 'admin') {
+                    subeFilter.innerHTML = '<option value="">Tüm Şubeler</option>' +
+                        allSubeler.map(sube => `<option value="${sube.id}">${esc(sube.subeAdi)}</option>`).join('');
+                    subeFilter.style.display = 'inline-block';
+                }
+
+                filterUsers();
+            } catch (error) {
+                console.error('Şubeler yüklenemedi:', error);
+            }
+        }
+
+        // Rol değiştiğinde
+        document.getElementById('role').addEventListener('change', function() {
+            const parentSection = document.getElementById('parentSection');
+            if (this.value === 'veli') {
+                parentSection.style.display = 'block';
+            } else {
+                parentSection.style.display = 'none';
+            }
+        });
+
+        // Rol değiştiğinde
+        document.getElementById('role').addEventListener('change', function() {
+            const parentSection = document.getElementById('parentSection');
+            const subeSection = document.getElementById('subeSection');
+            
+            if (this.value === 'veli') {
+                parentSection.style.display = 'block';
+            } else {
+                parentSection.style.display = 'none';
+            }
+            
+            // Yönetici veya Antrenör ise şube seçimi zorunlu
+            if (this.value === 'yonetici' || this.value === 'antrenor') {
+                subeSection.style.display = 'block';
+                document.getElementById('subeSelect').required = true;
+            } else {
+                subeSection.style.display = 'none';
+                document.getElementById('subeSelect').required = false;
+            }
+        });
+
+        // Kullanıcı formu
+        document.getElementById('userForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const user = {
+                adSoyad: document.getElementById('fullName').value,
+                kullaniciAdi: document.getElementById('username').value,
+                sifre: document.getElementById('password').value,
+                rol: document.getElementById('role').value,
+                telefon: document.getElementById('phone').value,
+                email: document.getElementById('email').value,
+                studentId: document.getElementById('studentSelect').value || null,
+                subeId: currentUser.rol === 'yonetici' ? currentUser.subeId : (document.getElementById('subeSelect').value || null)
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(user)
+                });
+
+                if (response.ok) {
+                    showMessage('✅ Kullanıcı başarıyla oluşturuldu!');
+                    document.getElementById('userForm').reset();
+                    loadUsers();
+                    showTab('list');
+                } else {
+                    const error = await response.json();
+                    showMessage('❌ Hata: ' + error.error);
+                }
+            } catch (error) {
+                showMessage('❌ Hata oluştu: ' + error.message);
+            }
+        });
+
+        // Arama ve filtre
+        document.getElementById('searchInput')?.addEventListener('input', filterUsers);
+        document.getElementById('roleFilter')?.addEventListener('change', filterUsers);
+        document.getElementById('subeFilter')?.addEventListener('change', filterUsers);
+
+        function filterUsers() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const roleFilter = document.getElementById('roleFilter').value;
+            const subeFilter = document.getElementById('subeFilter')?.value || '';
+
+            let filtered = allUsers.filter(user => {
+                const matchesSearch = 
+                    user.adSoyad.toLowerCase().includes(searchTerm) ||
+                    user.kullaniciAdi.toLowerCase().includes(searchTerm) ||
+                    (user.telefon && user.telefon.includes(searchTerm)) ||
+                    (user.email && user.email.toLowerCase().includes(searchTerm));
+
+                const matchesRole = !roleFilter || user.rol === roleFilter;
+                const matchesSube = !subeFilter || String(user.subeId || '') === subeFilter;
+
+                return matchesSearch && matchesRole && matchesSube;
+            });
+
+            displayUsers(filtered);
+        }
+
+        // Kullanıcıları göster
+        function displayUsers(users = allUsers) {
+            const list = document.getElementById('usersList');
+
+            if (users.length === 0) {
+                list.innerHTML = '<p style="color: #999;">Kullanıcı bulunamadı</p>';
+                return;
+            }
+
+            list.innerHTML = users.map(user => `
+                <div class="user-card">
+                    <h3>${esc(user.adSoyad)} <span class="role-badge role-${user.rol}">${esc(getRoleName(user.rol))}</span></h3>
+                    <div class="user-info-grid">
+                        <p><strong>Kullanıcı Adı:</strong> ${esc(user.kullaniciAdi)}</p>
+                        <p><strong>Şube:</strong> ${esc(getSubeAdi(user.subeId))}</p>
+                        <p><strong>Telefon:</strong> ${esc(user.telefon || '-')}</p>
+                        <p><strong>E-posta:</strong> ${esc(user.email || '-')}</p>
+                        <p><strong>Şifre:</strong> ••••••••</p>
+                        <p><strong>Durum:</strong> ${user.aktif ? '✅ Aktif' : '❌ Pasif'}</p>
+                        <p><strong>Kayıt Tarihi:</strong> ${new Date(user.olusturmaTarihi).toLocaleDateString('tr-TR')}</p>
+                    </div>
+                    <div class="user-card-actions">
+                        <button class="btn-edit" onclick="editUser(${user.id})">✏️ Düzenle</button>
+                       ${user.kullaniciAdi !== 'admin' && user.id !== currentUser.id ? `<button class="btn-danger" onclick="deleteUser(${user.id})">🗑️ Sil</button>` : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Rol adını getir
+        function getRoleName(rol) {
+            const roles = {
+                'admin': '👑 Admin',
+                'yonetici': '🏢 Yönetici',
+                'antrenor': '🏃 Antrenör',
+                'veli': '👨‍👩‍👧 Veli'
+            };
+            return roles[rol] || rol;
+        }
+
+        // Şube adını getir
+        let allSubeler = [];
+        
+        function getSubeAdi(subeId) {
+            if (!subeId) return 'Tüm Şubeler';
+            const sube = allSubeler.find(s => s.id === subeId);
+            return sube ? sube.subeAdi : '-';
+        }
+
+        // Kullanıcı düzenle
+        function editUser(id) {
+            const user = allUsers.find(u => u.id === id);
+            if (!user) return;
+
+            document.getElementById('editUserId').value = user.id;
+            document.getElementById('editFullName').value = user.adSoyad;
+            document.getElementById('editUsername').value = user.kullaniciAdi;
+            document.getElementById('editPassword').value = '';
+            document.getElementById('editPassword').placeholder = 'Değiştirmek için yeni şifre girin (boş bırakırsanız aynı kalır)';
+            document.getElementById('editRole').value = user.rol;
+            document.getElementById('editPhone').value = user.telefon || '';
+            document.getElementById('editEmail').value = user.email || '';
+            document.getElementById('editActive').checked = user.aktif === 1;
+
+            // Şubeleri yükle
+            const editSubeSelect = document.getElementById('editSubeId');
+            editSubeSelect.innerHTML = '<option value="">Tüm Şubeler</option>';
+            allSubeler.forEach(sube => {
+                editSubeSelect.innerHTML += `<option value="${sube.id}">${esc(sube.subeAdi)}</option>`;
+            });
+            editSubeSelect.value = user.subeId || '';
+
+            document.getElementById('editModal').classList.add('active');
+            
+            // Yönetici ise kısıtlamalar
+            if (currentUser.rol === 'yonetici') {
+                // Şubeyi değiştiremesin
+                document.getElementById('editSubeId').value = currentUser.subeId;
+                document.getElementById('editSubeId').disabled = true;
+                
+                // Rolü değiştiremesin (mevcut rol ne ise o kalsın)
+                document.getElementById('editRole').disabled = true;
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('active');
+        }
+
+        // Güncelleme formu
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const id = document.getElementById('editUserId').value;
+            const user = {
+                adSoyad: document.getElementById('editFullName').value,
+                kullaniciAdi: document.getElementById('editUsername').value,
+                sifre: document.getElementById('editPassword').value,
+                rol: document.getElementById('editRole').value,
+                telefon: document.getElementById('editPhone').value,
+                email: document.getElementById('editEmail').value,
+                aktif: document.getElementById('editActive').checked ? 1 : 0,
+                subeId: document.getElementById('editSubeId').value || null
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/users/${id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(user)
+                });
+
+                if (response.ok) {
+                    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+                    if (parseInt(id) === currentUser?.id && user.sifre) {
+                        localStorage.removeItem('mustChangePassword');
+                        document.getElementById('mustChangePasswordBanner').style.display = 'none';
+                    }
+                    showMessage('✅ Kullanıcı güncellendi!');
+                    closeEditModal();
+                    loadUsers();
+                }
+            } catch (error) {
+                showMessage('❌ Hata oluştu: ' + error.message);
+            }
+        });
+
+        // Kullanıcı sil
+        async function deleteUser(id) {
+            if (!confirm('Bu kullanıcıyı silmek istediğinizden emin misiniz?')) return;
+
+            try {
+                const response = await fetch(`${API_URL}/users/${id}`, {
+                    method: 'DELETE'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessage('✅ Kullanıcı silindi!');
+                    loadUsers();
+                } else {
+                    showMessage('❌ ' + data.error);
+                }
+            } catch (error) {
+                showMessage('❌ Hata oluştu: ' + error.message);
+            }
+        }
+
+        // Çıkış
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        // Mesaj göster
+        function showMessage(msg) {
+            const el = document.getElementById('successMessage');
+            el.textContent = msg;
+            el.style.display = 'block';
+            setTimeout(() => {
+                el.style.display = 'none';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

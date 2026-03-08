@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Raporlar - Futbol Okulu</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .filter-bar {
+            background: white;
+            border-radius: 15px;
+            padding: 15px 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            font-weight: 600;
+            color: #667eea;
+            background: white;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .filter-btn {
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active,
+        .filter-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+        }
+
+        .chart {
+            display: grid;
+            gap: 6px;
+        }
+
+        .chart-row {
+            display: grid;
+            grid-template-columns: 140px 1fr 50px;
+            align-items: center;
+            gap: 10px;
+            font-size: 13px;
+        }
+
+        .chart-label {
+            color: #444;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .chart-bar {
+            height: 12px;
+            background: #e9ecef;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .chart-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 6px;
+        }
+
+        .chart-value {
+            text-align: right;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .line-chart {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        .line-legend {
+            display: flex;
+            gap: 12px;
+            margin: 6px 0 10px;
+            font-size: 13px;
+            color: #444;
+            align-items: center;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        th {
+            color: #666;
+            font-weight: 600;
+        }
+
+        .empty {
+            color: #999;
+            text-align: center;
+            padding: 10px 0;
+        }
+
+        .inline-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .inline-filters input[type="date"] {
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            font-weight: 600;
+            color: #667eea;
+            background: white;
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">📑 Raporlar</div>
+        <div id="navMenu"></div>
+        <div class="user-info">
+            <span id="currentUserName"></span>
+            <button onclick="logout()" class="btn-danger">Çıkış</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="filter-bar">
+            <button class="filter-btn active" data-range="periods" data-count="1">Son Dönem</button>
+            <button class="filter-btn" data-range="periods" data-count="3">Son 3 Dönem</button>
+            <button class="filter-btn" data-range="periods" data-count="6">Son 6 Dönem</button>
+            <button class="filter-btn" data-range="periods" data-count="13">Son 13 Dönem</button>
+            <select id="subeFilter" style="display:none;"></select>
+            <button class="btn-primary" onclick="downloadPdf()">📄 PDF İndir</button>
+        </div>
+
+        <div id="periodInfo" class="card" style="margin-bottom:20px;padding:12px 20px;"></div>
+
+        <div id="paymentStatsCard" class="card" style="margin-bottom:20px;display:none;">
+            <h3>💰 Dönem Ödemeleri</h3>
+            <div id="paymentStats"></div>
+        </div>
+
+        <div class="grid">
+            <div class="card">
+                <h3>🎂 Yaş Dağılımı</h3>
+                <div id="ageStats"></div>
+            </div>
+            <div class="card">
+                <h3>🏫 Okul Dağılımı</h3>
+                <div id="schoolStats"></div>
+            </div>
+            <div class="card">
+                <h3>🏘️ Mahalle Dağılımı</h3>
+                <div id="neighborhoodStats"></div>
+            </div>
+            <div class="card">
+                <h3>📣 Kayıt Kaynağı</h3>
+                <div id="sourceStats"></div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h3>🧑‍🏫 Antrenör / Grup Raporu</h3>
+            <div id="instructorStats"></div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h3>📊 Grup Detayları</h3>
+            <div id="groupStats"></div>
+        </div>
+
+        <div class="card" style="margin-top: 20px;">
+            <h3>📋 Yoklama İstatistikleri</h3>
+            <div class="inline-filters">
+                <label>Başlangıç:</label>
+                <input type="date" id="attendanceStart" />
+                <label>Bitiş:</label>
+                <input type="date" id="attendanceEnd" />
+                <label>Grup:</label>
+                <select id="attendanceGroupFilter">
+                    <option value="">Tüm Gruplar</option>
+                </select>
+                <button class="btn-primary" onclick="loadAttendanceReport()">Yükle</button>
+            </div>
+            <div id="attendanceMonthlyChart"></div>
+            <div id="attendanceSummary"></div>
+            <div style="margin-top: 10px;" id="attendanceGroupStats"></div>
+            <div style="margin-top: 10px;" id="attendanceStudentStats"></div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        let currentRange = { range: 'periods', count: 1 };
+        let selectedSubeId = null;
+
+        (function() {
+            const user = localStorage.getItem('currentUser');
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            const userData = JSON.parse(user);
+            document.getElementById('currentUserName').textContent = userData.adSoyad;
+
+            if (!['admin', 'yonetici'].includes(userData.rol)) {
+                alert('Bu sayfaya erişim yetkiniz yok!');
+                window.location.href = 'index.html';
+            }
+
+            if (userData.rol === 'admin') {
+                loadSubeFilter();
+            } else if (userData.rol === 'yonetici') {
+                selectedSubeId = userData.subeId || null;
+            }
+        })();
+        async function loadSubeFilter() {
+            const select = document.getElementById('subeFilter');
+            if (!select) return;
+
+            const response = await fetch(`${API_URL}/subeler/active`);
+            const subeler = await response.json();
+
+            select.innerHTML = '<option value="">Tüm Şubeler</option>' +
+                subeler.map(s => `<option value="${s.id}">${esc(s.subeAdi)}</option>`).join('');
+            select.style.display = 'inline-block';
+
+            select.addEventListener('change', () => {
+                selectedSubeId = select.value ? parseInt(select.value, 10) : null;
+                loadReport();
+                loadAttendanceGroupFilter();
+            });
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        function renderTable(containerId, rows, columns) {
+            const container = document.getElementById(containerId);
+            if (!rows || rows.length === 0) {
+                container.innerHTML = '<div class="empty">Veri bulunamadı</div>';
+                return;
+            }
+
+            const header = columns.map(c => `<th>${c.label}</th>`).join('');
+            const body = rows.map(row => `<tr>${columns.map(c => `<td>${esc(row[c.key] != null ? row[c.key] : '')}</td>`).join('')}</tr>`).join('');
+
+            container.innerHTML = `<div class="table-wrap"><table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
+        }
+
+        function renderBarChart(containerId, rows, labelKey, valueKey, limit = 10) {
+            const container = document.getElementById(containerId);
+            if (!rows || rows.length === 0) {
+                container.innerHTML = '<div class="empty">Veri bulunamadı</div>';
+                return;
+            }
+
+            const topRows = rows.slice(0, limit);
+            const maxValue = Math.max(...topRows.map(r => r[valueKey] || 0), 1);
+            const chart = topRows.map(row => {
+                const value = row[valueKey] || 0;
+                const width = Math.round((value / maxValue) * 100);
+                const label = esc(row[labelKey] != null ? row[labelKey] : '');
+                return `
+                    <div class="chart-row">
+                        <div class="chart-label" title="${label}">${label}</div>
+                        <div class="chart-bar"><div class="chart-fill" style="width:${width}%"></div></div>
+                        <div class="chart-value">${value}</div>
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = `<div class="chart">${chart}</div>`;
+        }
+
+        function renderKeyValue(containerId, data) {
+            const container = document.getElementById(containerId);
+            if (!data) {
+                container.innerHTML = '<div class="empty">Veri bulunamadı</div>';
+                return;
+            }
+            const total = (data.present || 0) + (data.absent || 0);
+            const rate = total > 0 ? Math.round((data.present / total) * 100) : 0;
+            container.innerHTML = `
+                <div class="table-wrap">
+                <table>
+                    <tbody>
+                        <tr><th>Toplam Katılım</th><td>${data.present || 0}</td></tr>
+                        <tr><th>Toplam Devamsızlık</th><td>${data.absent || 0}</td></tr>
+                        <tr><th>Devam Oranı</th><td>%${rate}</td></tr>
+                    </tbody>
+                </table>
+                </div>
+            `;
+        }
+
+        function renderLineChart(containerId, rows) {
+            const container = document.getElementById(containerId);
+            if (!rows || rows.length === 0) {
+                container.innerHTML = '<div class="empty">Veri bulunamadı</div>';
+                return;
+            }
+
+            const width = 600;
+            const height = 220;
+            const padding = { left: 40, right: 20, top: 20, bottom: 30 };
+            const maxVal = Math.max(
+                1,
+                ...rows.map(r => Math.max(r.presentCount || 0, r.absentCount || 0))
+            );
+            const xStep = rows.length > 1
+                ? (width - padding.left - padding.right) / (rows.length - 1)
+                : 0;
+
+            const xForIndex = i => padding.left + i * xStep;
+            const yForValue = val =>
+                height - padding.bottom - (val / maxVal) * (height - padding.top - padding.bottom);
+
+            const presentPoints = rows.map((r, i) =>
+                `${xForIndex(i)},${yForValue(r.presentCount || 0)}`
+            ).join(' ');
+
+            const absentPoints = rows.map((r, i) =>
+                `${xForIndex(i)},${yForValue(r.absentCount || 0)}`
+            ).join(' ');
+
+            const monthLabels = rows.map((r, i) => {
+                const x = xForIndex(i);
+                return `<text x="${x}" y="${height - 8}" text-anchor="middle" font-size="11" fill="#666">${esc(r.month || '')}</text>`;
+            }).join('');
+
+            const gridLines = [0.25, 0.5, 0.75, 1].map(p => {
+                const y = height - padding.bottom - p * (height - padding.top - padding.bottom);
+                return `<line x1="${padding.left}" y1="${y}" x2="${width - padding.right}" y2="${y}" stroke="#eee" />`;
+            }).join('');
+
+            container.innerHTML = `
+                <div class="line-legend">
+                    <span><span class="legend-dot" style="background:#28a745;"></span>Katılım</span>
+                    <span><span class="legend-dot" style="background:#dc3545;"></span>Devamsızlık</span>
+                </div>
+                <div class="line-chart">
+                    <svg viewBox="0 0 ${width} ${height}" width="100%" height="220" aria-label="Aylık Yoklama Grafiği">
+                        ${gridLines}
+                        <line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" stroke="#ccc" />
+                        <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" stroke="#ccc" />
+                        <polyline fill="none" stroke="#28a745" stroke-width="2" points="${presentPoints}" />
+                        <polyline fill="none" stroke="#dc3545" stroke-width="2" points="${absentPoints}" />
+                        ${monthLabels}
+                    </svg>
+                </div>
+            `;
+        }
+
+        async function loadAttendanceGroupFilter() {
+            const select = document.getElementById('attendanceGroupFilter');
+            if (!select) return;
+
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            let url = `${API_URL}/groups`;
+
+            if (user.rol === 'admin' && selectedSubeId) {
+                url += `?subeId=${selectedSubeId}`;
+            } else if (user.rol === 'yonetici' && user.subeId) {
+                url += `?subeId=${user.subeId}`;
+            }
+
+            const response = await fetch(url);
+            const groups = await response.json();
+
+            select.innerHTML = '<option value="">Tüm Gruplar</option>' +
+                groups.map(g => `<option value="${g.id}">${esc(g.groupName)}</option>`).join('');
+        }
+
+        function mapCountStats(stats, labelKey) {
+            return Object.entries(stats || {})
+                .sort((a, b) => b[1] - a[1])
+                .map(([label, count]) => ({ [labelKey]: label, count }));
+        }
+
+        async function loadReport() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            const params = new URLSearchParams({
+                range: currentRange.range,
+                count: currentRange.count
+            });
+            const subeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+            if (subeId) {
+                params.append('subeId', subeId);
+            }
+
+            const response = await fetch(`${API_URL}/reports/summary?${params.toString()}`);
+            const data = await response.json();
+
+            // Dönem bilgisi
+            const periodInfo = document.getElementById('periodInfo');
+            if (data.selectedPeriods && data.selectedPeriods.length > 0) {
+                const periodText = data.selectedPeriods.map(p => {
+                    const bas = p.baslangicTarihi ? new Date(p.baslangicTarihi).toLocaleDateString('tr-TR') : '-';
+                    const bit = p.bitisTarihi ? new Date(p.bitisTarihi).toLocaleDateString('tr-TR') : '-';
+                    return `${esc(p.donemAdi || '')} (${bas} - ${bit})`;
+                }).join(' | ');
+                periodInfo.innerHTML = '<strong>Seçilen dönem: </strong>' + periodText;
+                periodInfo.style.display = 'block';
+            } else if (data.dateRange) {
+                periodInfo.innerHTML = '<strong>Tarih aralığı: </strong>' + data.dateRange.start + ' - ' + data.dateRange.end + ' <span style="color:#999;">(Dönem bulunamadı, son 1 yıl gösteriliyor)</span>';
+                periodInfo.style.display = 'block';
+            } else {
+                periodInfo.style.display = 'none';
+            }
+
+            // Ödeme özeti
+            const paymentCard = document.getElementById('paymentStatsCard');
+            const paymentStatsEl = document.getElementById('paymentStats');
+            if (data.paymentStats && (data.paymentStats.odenenSayisi > 0 || data.paymentStats.borcluSayisi > 0)) {
+                const ps = data.paymentStats;
+                paymentStatsEl.innerHTML = `
+                    <div class="table-wrap">
+                    <table>
+                        <tr><th>Ödenen</th><td>${ps.odenenSayisi} kişi · ${(ps.totalOdenen || 0).toLocaleString('tr-TR')} TL</td></tr>
+                        <tr><th>Borçlu</th><td>${ps.borcluSayisi} kişi · ${(ps.totalBorclu || 0).toLocaleString('tr-TR')} TL</td></tr>
+                    </table>
+                    </div>
+                `;
+                paymentCard.style.display = 'block';
+            } else {
+                paymentCard.style.display = 'none';
+            }
+
+            const ageRows = mapCountStats(data.ageStats, 'age').map(r => ({
+                age: r.age === '-' ? '-' : `${r.age} yaş`,
+                count: r.count
+            }));
+            renderTable('ageStats', ageRows, [
+                { key: 'age', label: 'Yaş' },
+                { key: 'count', label: 'Sayı' }
+            ]);
+            renderBarChart('ageStats', ageRows, 'age', 'count', 12);
+
+            renderTable('schoolStats', mapCountStats(data.schoolStats, 'school'), [
+                { key: 'school', label: 'Okul' },
+                { key: 'count', label: 'Sayı' }
+            ]);
+            renderBarChart('schoolStats', mapCountStats(data.schoolStats, 'school'), 'school', 'count', 10);
+
+            renderTable('neighborhoodStats', mapCountStats(data.mahalleStats, 'neighborhood'), [
+                { key: 'neighborhood', label: 'Mahalle' },
+                { key: 'count', label: 'Sayı' }
+            ]);
+            renderBarChart('neighborhoodStats', mapCountStats(data.mahalleStats, 'neighborhood'), 'neighborhood', 'count', 10);
+
+            renderTable('sourceStats', mapCountStats(data.sourceStats, 'source'), [
+                { key: 'source', label: 'Kaynak' },
+                { key: 'count', label: 'Sayı' }
+            ]);
+            renderBarChart('sourceStats', mapCountStats(data.sourceStats, 'source'), 'source', 'count', 10);
+
+            const instructorRows = (data.instructorStats || []).map(row => ({
+                ...row,
+                instructorDisplay: row.instructorSubeAdi
+                    ? `${row.instructorName} (${row.instructorSubeAdi})`
+                    : row.instructorName
+            }));
+
+            renderTable('instructorStats', instructorRows, [
+                { key: 'instructorDisplay', label: 'Antrenör' },
+                { key: 'groupCount', label: 'Grup' },
+                { key: 'studentCount', label: 'Öğrenci' },
+                { key: 'registrations', label: 'Kayıt' },
+                { key: 'inactives', label: 'Pasif' }
+            ]);
+
+            const groupRows = (data.groupStats || []).map(row => ({
+                ...row,
+                instructorDisplay: row.instructorSubeAdi
+                    ? `${row.instructorName} (${row.instructorSubeAdi})`
+                    : row.instructorName
+            }));
+
+            renderTable('groupStats', groupRows, [
+                { key: 'groupName', label: 'Grup' },
+                { key: 'instructorDisplay', label: 'Antrenör' },
+                { key: 'studentCount', label: 'Öğrenci' },
+                { key: 'registrations', label: 'Kayıt' },
+                { key: 'inactives', label: 'Pasif' }
+            ]);
+        }
+
+        async function loadAttendanceReport() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            const start = document.getElementById('attendanceStart').value;
+            const end = document.getElementById('attendanceEnd').value;
+            const groupId = document.getElementById('attendanceGroupFilter').value;
+            if (!start || !end) {
+                return;
+            }
+
+            const params = new URLSearchParams({ start, end });
+            const subeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+            if (subeId) {
+                params.append('subeId', subeId);
+            }
+            if (groupId) {
+                params.append('groupId', groupId);
+            }
+
+            const response = await fetch(`${API_URL}/reports/attendance?${params.toString()}`);
+            const data = await response.json();
+
+            renderKeyValue('attendanceSummary', data.totals);
+
+            const groupRows = (data.groups || []).map(row => {
+                const total = (row.presentCount || 0) + (row.absentCount || 0);
+                const rate = total > 0 ? Math.round((row.presentCount / total) * 100) : 0;
+                return {
+                    ...row,
+                    rate: `%${rate}`,
+                    groupDisplay: row.subeAdi ? `${row.groupName} (${row.subeAdi})` : row.groupName
+                };
+            });
+
+            renderTable('attendanceGroupStats', groupRows, [
+                { key: 'groupDisplay', label: 'Grup' },
+                { key: 'sessionCount', label: 'Antrenman' },
+                { key: 'presentCount', label: 'Katılım' },
+                { key: 'absentCount', label: 'Devamsızlık' },
+                { key: 'rate', label: 'Oran' }
+            ]);
+
+            renderBarChart(
+                'attendanceGroupStats',
+                groupRows.map(r => ({ label: r.groupDisplay, value: r.absentCount || 0 })),
+                'label',
+                'value',
+                10
+            );
+
+            const studentRows = (data.students || []).map(row => {
+                const total = (row.presentCount || 0) + (row.absentCount || 0);
+                const rate = total > 0 ? Math.round((row.presentCount / total) * 100) : 0;
+                return {
+                    ...row,
+                    rate: `%${rate}`,
+                    studentDisplay: `${row.ad} ${row.soyad}`,
+                    groupDisplay: row.subeAdi ? `${row.groupName} (${row.subeAdi})` : row.groupName
+                };
+            });
+
+            renderTable('attendanceStudentStats', studentRows, [
+                { key: 'studentDisplay', label: 'Öğrenci' },
+                { key: 'groupDisplay', label: 'Grup' },
+                { key: 'presentCount', label: 'Katılım' },
+                { key: 'absentCount', label: 'Devamsızlık' },
+                { key: 'rate', label: 'Oran' }
+            ]);
+            renderBarChart(
+                'attendanceStudentStats',
+                studentRows.map(r => ({ label: r.studentDisplay, value: r.absentCount || 0 })),
+                'label',
+                'value',
+                10
+            );
+
+            const trendResponse = await fetch(`${API_URL}/reports/attendance-monthly?${params.toString()}`);
+            const trendData = await trendResponse.json();
+            renderLineChart('attendanceMonthlyChart', trendData.rows || []);
+        }
+
+        function bindFilters() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentRange = {
+                        range: btn.dataset.range,
+                        count: parseInt(btn.dataset.count, 10)
+                    };
+                    loadReport();
+                });
+            });
+        }
+
+        bindFilters();
+        loadReport();
+
+        function downloadPdf() {
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            const params = new URLSearchParams({
+                range: currentRange.range,
+                count: currentRange.count
+            });
+            const subeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+            if (subeId) {
+                params.append('subeId', subeId);
+            }
+            window.open(`${API_URL}/reports/pdf?${params.toString()}`, '_blank');
+        }
+
+        function initAttendanceDates() {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - 30);
+            document.getElementById('attendanceStart').value = start.toISOString().split('T')[0];
+            document.getElementById('attendanceEnd').value = end.toISOString().split('T')[0];
+        }
+
+        initAttendanceDates();
+        loadAttendanceGroupFilter();
+        loadAttendanceReport();
+    </script>
+</body>
+</html>

@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Futbol Okulu</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding-bottom: 50px;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .welcome-card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .welcome-card h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .welcome-card p {
+            color: #666;
+            font-size: 18px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .stat-card .number {
+            font-size: 42px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-sub {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #666;
+            font-weight: 600;
+        }
+
+        .stat-card.success .number {
+            color: #28a745;
+        }
+
+        .stat-card.danger .number {
+            color: #dc3545;
+        }
+
+        .stat-card.warning .number {
+            color: #ffc107;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 1200px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, minmax(200px, 1fr));
+            }
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .chart-card h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .recent-activity {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+
+        .recent-activity h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 20px;
+        }
+
+        .filter-bar {
+            background: white;
+            border-radius: 15px;
+            padding: 15px 20px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-bar select {
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+            font-weight: 600;
+            color: #667eea;
+            background: white;
+        }
+
+        .filter-btn {
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            padding: 8px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .filter-btn.active,
+        .filter-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+
+        .activity-item {
+            padding: 15px;
+            border-left: 4px solid #667eea;
+            background: #f8f9fa;
+            margin-bottom: 10px;
+            border-radius: 8px;
+        }
+
+        .activity-item.success {
+            border-left-color: #28a745;
+        }
+
+        .activity-item.danger {
+            border-left-color: #dc3545;
+        }
+
+        .activity-item .time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            height: 30px;
+            background: #e9ecef;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-top: 10px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            transition: width 0.5s;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, minmax(180px, 1fr));
+            }
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <div class="header">
+        <div class="logo">⚽ Futbol Okulu - Dashboard</div>
+        <div id="navMenu"></div>
+        <div class="user-info">
+            <span id="currentUserName"></span>
+            <button onclick="logout()" class="btn-danger">Çıkış</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="welcome-card">
+            <h1 id="welcomeMessage">Hoş Geldiniz!</h1>
+            <p id="dateInfo"></p>
+        </div>
+
+        <div class="filter-bar">
+            <button class="filter-btn active" data-count="1">Son Dönem</button>
+            <button class="filter-btn" data-count="3">Son 3 Dönem</button>
+            <button class="filter-btn" data-count="6">Son 6 Dönem</button>
+            <button class="filter-btn" data-count="13">Son 13 Dönem</button>
+            <select id="subeFilter" style="display:none;"></select>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="icon">👥</div>
+                <h3>Toplam Öğrenci</h3>
+                <div class="number" id="totalStudents">0</div>
+            </div>
+
+            <div class="stat-card success">
+                <div class="icon">✅</div>
+                <h3>Aktif Öğrenci</h3>
+                <div class="number" id="activeStudents">0</div>
+            </div>
+
+            <div class="stat-card warning">
+                <div class="icon">⏸️</div>
+                <h3>Pasif Öğrenci</h3>
+                <div class="number" id="inactiveStudents">0</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="icon">📊</div>
+                <h3>Aktif Grup</h3>
+                <div class="number" id="totalGroups">0</div>
+            </div>
+
+            <div class="stat-card danger">
+                <div class="icon">❌</div>
+                <h3>Borçlu Ödeme</h3>
+                <div class="number" id="unpaidCount">0</div>
+            </div>
+
+            <div class="stat-card success">
+                <div class="icon">💰</div>
+                <h3>Ödenen</h3>
+                <div class="number" id="paidCount">0</div>
+            </div>
+
+            <div class="stat-card danger">
+                <div class="icon">💸</div>
+                <h3>Borç Tutarı</h3>
+                <div class="number" id="unpaidAmount">0 TL</div>
+            </div>
+
+            <div class="stat-card success">
+                <div class="icon">💵</div>
+                <h3>Tahsilat</h3>
+                <div class="number" id="paidAmount">0 TL</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="icon">🆕</div>
+                <h3>Yeni Kayıt</h3>
+                <div class="number" id="periodRegistrations">0</div>
+            </div>
+
+            <div class="stat-card danger">
+                <div class="icon">⏹️</div>
+                <h3>Pasife Geçen</h3>
+                <div class="number" id="periodInactives">0</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-card">
+                <h3>📈 Öğrenci Dağılımı</h3>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Aktif:</strong></p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="activeProgress" style="width: 0%;">0%</div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Pasif:</strong></p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="inactiveProgress" style="width: 0%; background: #dc3545;">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>💰 Ödeme Durumu</h3>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Tahsilat Oranı:</strong></p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="paymentProgress" style="width: 0%; background: #28a745;">0%</div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Borç Oranı:</strong></p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="debtProgress" style="width: 0%; background: #dc3545;">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-card">
+                <h3>📌 Kayıt / Pasif Oranı</h3>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Kayıt Oranı:</strong></p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="periodRegistrationPercentBar" style="width: 0%;">0%</div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <p style="margin-bottom: 10px;"><strong>Pasif Oranı:</strong></p>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="periodInactivePercentBar" style="width: 0%; background: #dc3545;">0%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="recent-activity">
+            <h3>📋 Son Aktiviteler</h3>
+            <div id="activityList">
+                <p style="color: #999; text-align: center;">Yükleniyor...</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="menu.js"></script>
+    <script>
+        const API_URL = (window.API_URL || window.location.origin + '/api');
+        let allPayments = [];
+        let allPeriods = [];
+        let periodFilterCount = 1;
+        let selectedSubeId = (() => {
+            const p = new URLSearchParams(window.location.search);
+            const id = p.get('subeId');
+            return id ? parseInt(id, 10) : null;
+        })();
+
+        // Yetki kontrolü
+        (function() {
+            const user = localStorage.getItem('currentUser');
+            if (!user || !localStorage.getItem('token')) {
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const userData = JSON.parse(user);
+            document.getElementById('currentUserName').textContent = userData.adSoyad;
+            document.getElementById('welcomeMessage').textContent = `Hoş Geldiniz, ${userData.adSoyad}!`;
+            
+            if (!['admin', 'yonetici'].includes(userData.rol)) {
+                alert('Bu sayfaya erişim yetkiniz yok!');
+                window.location.href = 'index.html';
+            }
+        })();
+
+        // Tarih bilgisi
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        document.getElementById('dateInfo').textContent = new Date().toLocaleDateString('tr-TR', options);
+
+        // Menü ortak dosyadan yüklenir
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        }
+
+        async function loadSubeFilter() {
+            const select = document.getElementById('subeFilter');
+            if (!select) return;
+
+            const response = await fetch(`${API_URL}/subeler/active`);
+            const subeler = await response.json();
+
+            select.innerHTML = '<option value="">Tüm Şubeler</option>' +
+                subeler.map(s => `<option value="${s.id}">${esc(s.subeAdi)}</option>`).join('');
+            select.style.display = 'inline-block';
+
+            if (selectedSubeId) {
+                select.value = selectedSubeId;
+            }
+
+            select.addEventListener('change', () => {
+                selectedSubeId = select.value ? parseInt(select.value, 10) : null;
+                if (selectedSubeId && window.history.replaceState) {
+                    const url = new URL(window.location);
+                    url.searchParams.set('subeId', selectedSubeId);
+                    window.history.replaceState({}, '', url);
+                } else if (!selectedSubeId && window.history.replaceState) {
+                    const url = new URL(window.location);
+                    url.searchParams.delete('subeId');
+                    const newUrl = url.search ? url.toString() : url.pathname;
+                    window.history.replaceState({}, '', newUrl);
+                }
+                loadDashboard();
+            });
+        }
+
+        function applyPeriodFilter(payments) {
+            if (!periodFilterCount || allPeriods.length === 0) return payments;
+
+            const sortedPeriods = [...allPeriods].sort((a, b) =>
+                new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi)
+            );
+            const periodIds = new Set(
+                sortedPeriods.slice(0, periodFilterCount).map(p => p.id)
+            );
+            return payments.filter(p => periodIds.has(p.periodId));
+        }
+
+        function getPeriodRange() {
+            if (!periodFilterCount || allPeriods.length === 0) return null;
+            const sortedPeriods = [...allPeriods].sort((a, b) =>
+                new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi)
+            );
+            const selected = sortedPeriods.slice(0, periodFilterCount);
+            if (selected.length === 0) return null;
+            const start = selected[selected.length - 1].baslangicTarihi;
+            const end = selected[0].bitisTarihi;
+            return { start, end };
+        }
+
+        function updateFilterButtons() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                const count = parseInt(btn.dataset.count, 10);
+                btn.classList.toggle('active', count === periodFilterCount);
+            });
+        }
+
+        function bindFilterButtons() {
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    periodFilterCount = parseInt(btn.dataset.count, 10);
+                    updateFilterButtons();
+                    renderPaymentStats();
+                });
+            });
+        }
+
+        function renderPaymentStats() {
+            const filteredPayments = applyPeriodFilter(allPayments);
+
+            const unpaid = filteredPayments.filter(p => p.odemeDurumu === 'Borçlu');
+            const paid = filteredPayments.filter(p => p.odemeDurumu === 'Ödendi');
+
+            document.getElementById('unpaidCount').textContent = unpaid.length;
+            document.getElementById('paidCount').textContent = paid.length;
+
+            const unpaidAmount = unpaid.reduce((sum, p) => sum + p.tutar, 0);
+            const paidAmount = paid.reduce((sum, p) => sum + p.tutar, 0);
+
+            document.getElementById('unpaidAmount').textContent = unpaidAmount.toFixed(2) + ' TL';
+            document.getElementById('paidAmount').textContent = paidAmount.toFixed(2) + ' TL';
+
+            const totalAmount = unpaidAmount + paidAmount;
+            const paidPercent = totalAmount > 0 ? Math.round((paidAmount / totalAmount) * 100) : 0;
+            const debtPercent = totalAmount > 0 ? Math.round((unpaidAmount / totalAmount) * 100) : 0;
+
+            document.getElementById('paymentProgress').style.width = paidPercent + '%';
+            document.getElementById('paymentProgress').textContent = paidPercent + '%';
+            document.getElementById('debtProgress').style.width = debtPercent + '%';
+            document.getElementById('debtProgress').textContent = debtPercent + '%';
+
+            loadRecentActivity(filteredPayments);
+
+            loadPeriodStudentStats();
+        }
+
+        async function loadPeriodStudentStats() {
+            const range = getPeriodRange();
+            if (!range) {
+                document.getElementById('periodRegistrations').textContent = 0;
+                document.getElementById('periodInactives').textContent = 0;
+                document.getElementById('periodRegistrationPercentBar').style.width = '0%';
+                document.getElementById('periodRegistrationPercentBar').textContent = '0%';
+                document.getElementById('periodInactivePercentBar').style.width = '0%';
+                document.getElementById('periodInactivePercentBar').textContent = '0%';
+                return;
+            }
+
+            const user = JSON.parse(localStorage.getItem('currentUser'));
+            const subeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+            const params = new URLSearchParams({
+                start: range.start,
+                end: range.end
+            });
+            if (subeId) params.append('subeId', subeId);
+
+            const response = await fetch(`${API_URL}/reports/student-period-stats?${params.toString()}`);
+            const data = await response.json();
+
+            document.getElementById('periodRegistrations').textContent = data.registrations || 0;
+            document.getElementById('periodInactives').textContent = data.inactives || 0;
+
+            const total = data.totalStudents || 0;
+            const regPercent = total > 0 ? Math.round((data.registrations / total) * 100) : 0;
+            const inactPercent = total > 0 ? Math.round((data.inactives / total) * 100) : 0;
+            document.getElementById('periodRegistrationPercentBar').style.width = regPercent + '%';
+            document.getElementById('periodRegistrationPercentBar').textContent = regPercent + '%';
+            document.getElementById('periodInactivePercentBar').style.width = inactPercent + '%';
+            document.getElementById('periodInactivePercentBar').textContent = inactPercent + '%';
+        }
+
+        async function loadDashboard() {
+            try {
+                const user = JSON.parse(localStorage.getItem('currentUser'));
+                
+                // Öğrenci istatistikleri
+                let statsUrl = `${API_URL}/students/stats`;
+                const statsSubeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+                if (statsSubeId) {
+                    statsUrl += `?subeId=${statsSubeId}`;
+                }
+                const statsResponse = await fetch(statsUrl);
+                const stats = await statsResponse.json();
+                
+                document.getElementById('totalStudents').textContent = stats.total;
+                document.getElementById('activeStudents').textContent = stats.active;
+                document.getElementById('inactiveStudents').textContent = stats.inactive;
+                
+                // Progress barlar
+                const activePercent = stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0;
+                const inactivePercent = stats.total > 0 ? Math.round((stats.inactive / stats.total) * 100) : 0;
+                
+                document.getElementById('activeProgress').style.width = activePercent + '%';
+                document.getElementById('activeProgress').textContent = activePercent + '%';
+                document.getElementById('inactiveProgress').style.width = inactivePercent + '%';
+                document.getElementById('inactiveProgress').textContent = inactivePercent + '%';
+                
+                // Grup sayısı
+                let groupsUrl = `${API_URL}/groups/active`;
+                const groupsSubeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+                if (groupsSubeId) {
+                    groupsUrl += `?subeId=${groupsSubeId}`;
+                }
+                const groupsResponse = await fetch(groupsUrl);
+                const groups = await groupsResponse.json();
+                document.getElementById('totalGroups').textContent = groups.length;
+                
+                // Ödeme istatistikleri
+                let paymentsUrl = `${API_URL}/period-payments`;
+                const paymentsSubeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
+                if (paymentsSubeId) {
+                    paymentsUrl += `?subeId=${paymentsSubeId}`;
+                }
+                const periodsUrl = `${API_URL}/periods${paymentsSubeId ? `?subeId=${paymentsSubeId}` : ''}`;
+
+                const [paymentsResponse, periodsResponse] = await Promise.all([
+                    fetch(paymentsUrl),
+                    fetch(periodsUrl)
+                ]);
+
+                allPayments = await paymentsResponse.json();
+                allPeriods = await periodsResponse.json();
+
+                updateFilterButtons();
+                renderPaymentStats();
+                
+            } catch (error) {
+                console.error('Dashboard yüklenirken hata:', error);
+            }
+        }
+
+        function loadRecentActivity(payments) {
+            const recent = payments
+                .filter(p => p.odemeDurumu === 'Ödendi')
+                .sort((a, b) => new Date(b.odemeTarihi) - new Date(a.odemeTarihi))
+                .slice(0, 10);
+            
+            const activityList = document.getElementById('activityList');
+            
+            if (recent.length === 0) {
+                activityList.innerHTML = '<p style="color: #999; text-align: center;">Henüz ödeme kaydı yok</p>';
+                return;
+            }
+            
+            activityList.innerHTML = recent.map(p => `
+                <div class="activity-item success">
+                    <strong>${esc(p.ad)} ${esc(p.soyad)}</strong> - ${esc(p.donemAdi)}
+                    <br>
+                    <span style="color: #28a745; font-weight: bold;">${p.tutar.toFixed(2)} TL</span> 
+                    <span style="color: #666;">- ${esc(p.odemeYontemi || 'Nakit')}</span>
+                    <div class="time">${new Date(p.odemeTarihi).toLocaleDateString('tr-TR')} ${new Date(p.odemeTarihi).toLocaleTimeString('tr-TR', {hour: '2-digit', minute: '2-digit'})}</div>
+                </div>
+            `).join('');
+        }
+
+        bindFilterButtons();
+        const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+        if (currentUser && currentUser.rol === 'admin') {
+            loadSubeFilter().then(() => loadDashboard());
+        } else {
+            loadDashboard();
+        }
+    </script>
+</body>
+</html>
