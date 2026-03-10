@@ -614,12 +614,13 @@
             <h2 style="margin-bottom: 20px; color: #333;">Kayıtlı Öğrenciler</h2>
             <div style="display: flex; gap: 15px; margin-bottom: 20px; align-items: center;">
                 <div style="flex: 1;">
-                    <input type="text" id="searchInput" placeholder="🔍 Öğrenci ara (ad, soyad, TC, veli adı...)" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
+                    <input type="text" id="searchInput" placeholder="🔍 Ara (ad, soyad, TC, veli adı...)" style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
                 </div>
-                <div style="display: flex; gap: 10px;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
                     <button id="btnAll" class="btn-filter" onclick="filterByStatus('all')">Tümü</button>
                     <button id="btnActive" class="btn-filter active" onclick="filterByStatus('active')">Aktif</button>
                     <button id="btnInactive" class="btn-filter" onclick="filterByStatus('inactive')">Pasif</button>
+                    <button class="btn-primary" onclick="loadStudents(0, true)" style="padding: 10px 20px;">Son 50</button>
                 </div>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -1059,7 +1060,7 @@
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -1070,11 +1071,8 @@
 
         // Menü ortak dosyadan yüklenir
 
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
+        const PAGE_SIZE = 50;
+        let studentsTotalCount = 0;
 
         function showMessage(text) {
             const msg = document.getElementById('successMessage');
@@ -1313,7 +1311,7 @@
             e.preventDefault();
             try {
                 const res = await fetch(`${API_URL}/students/import-template`, {
-                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') }
+                    credentials: 'include'
                 });
                 const blob = await res.blob();
                 const a = document.createElement('a');
@@ -1343,7 +1341,7 @@
                 formData.append('file', selectedImportFile);
                 const res = await fetch(`${API_URL}/students/import`, {
                     method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+                    credentials: 'include',
                     body: formData
                 });
                 const data = await res.json().catch(() => ({}));
@@ -1425,20 +1423,24 @@
             }
         });
 
-        async function loadStudents() {
+        let searchDebounceTimer = null;
+        async function loadStudents(offset = 0, append = false) {
             try {
                 const user = JSON.parse(localStorage.getItem('currentUser'));
-                let url = `${API_URL}/students`;
-                
-                // Yönetici ise sadece kendi şubesini göster
-                if (user.rol === 'yonetici' && user.subeId) {
-                    url += `?subeId=${user.subeId}`;
-                }
-                // Admin ise tüm şubeleri göster (subeId parametresi yok)
-                
+                const q = document.getElementById('searchInput').value.trim();
+                let url = `${API_URL}/students?limit=${PAGE_SIZE}&offset=${offset}`;
+                if (user.rol === 'yonetici' && user.subeId) url += `&subeId=${user.subeId}`;
+                if (q) url += `&q=${encodeURIComponent(q)}`;
+                if (currentStatusFilter === 'active') url += '&durum=Aktif';
+                else if (currentStatusFilter === 'inactive') url += '&durum=Pasif';
                 const response = await fetch(url);
-                allStudents = await response.json();
-                filterStudents();
+                const data = await response.json();
+                const rows = Array.isArray(data) ? data : (data.rows || []);
+                const total = Array.isArray(data) ? data.length : (data.total || 0);
+                studentsTotalCount = total;
+                if (append) allStudents = allStudents.concat(rows);
+                else allStudents = rows;
+                displayStudents(allStudents, total, offset + rows.length);
                 updateStats();
             } catch (error) {
                 console.error('Öğrenciler yüklenemedi:', error);
@@ -1469,51 +1471,40 @@
 
         let currentStatusFilter = 'active'; // Varsayılan: Aktif
 
-        document.getElementById('searchInput').addEventListener('input', filterStudents);
+        document.getElementById('searchInput').addEventListener('input', function() {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => loadStudents(0), 350);
+        });
+
+        function loadMoreStudents() {
+            loadStudents(allStudents.length, true);
+        }
 
         function filterByStatus(status) {
             currentStatusFilter = status;
-            
-            // Buton stillerini güncelle
             document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
             if (status === 'all') document.getElementById('btnAll').classList.add('active');
             if (status === 'active') document.getElementById('btnActive').classList.add('active');
             if (status === 'inactive') document.getElementById('btnInactive').classList.add('active');
-            
-            filterStudents();
+            loadStudents(0);
         }
 
-        function filterStudents() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-
-            let filtered = allStudents.filter(student => {
-                // Durum filtresi
-                let matchesStatus = true;
-                if (currentStatusFilter === 'active') {
-                    matchesStatus = student.durum === 'Aktif';
-                } else if (currentStatusFilter === 'inactive') {
-                    matchesStatus = student.durum !== 'Aktif';
-                }
-                
-                // Arama filtresi
-                const matchesSearch = 
-                    student.ad.toLowerCase().includes(searchTerm) ||
-                    student.soyad.toLowerCase().includes(searchTerm) ||
-                    student.veliAdi.toLowerCase().includes(searchTerm) ||
-                    (student.tcNo && student.tcNo.includes(searchTerm));
-
-                return matchesStatus && matchesSearch;
-            });
-
-            displayStudents(filtered);
-        }
-
-        function displayStudents(students) {
+        function displayStudents(students, total, shownCount) {
             const list = document.getElementById('studentsList');
 
             if (students.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: #999; grid-column: 1/-1;">Öğrenci bulunamadı</p>';
+                list.innerHTML = '<p style="text-align: center; color: #999; grid-column: 1/-1;">Öğrenci bulunamadı. Arama yapın veya "Son 50" ile listeyi yükleyin.</p>';
                 return;
+            }
+
+            let footer = '';
+            if (total !== undefined && total > students.length) {
+                footer = `<div style="grid-column: 1/-1; text-align: center; padding: 15px;">
+                    <span style="color: #666;">${students.length} / ${total} gösteriliyor</span>
+                    <button class="btn-primary" onclick="loadMoreStudents()" style="margin-left: 15px; padding: 8px 20px;">Daha fazla yükle</button>
+                </div>`;
+            } else if (total !== undefined && total > 0) {
+                footer = `<div style="grid-column: 1/-1; text-align: center; padding: 10px; color: #666;">Toplam ${total} öğrenci</div>`;
             }
 
             list.innerHTML = students.map(student => `
@@ -1539,7 +1530,7 @@
                         <button class="btn-danger" onclick="deleteStudent(${student.id})">🗑️ Sil</button>
                     </div>
                 </div>
-            `).join('');
+            `).join('') + footer;
         }
 
         function editStudent(id) {

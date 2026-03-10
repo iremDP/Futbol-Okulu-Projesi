@@ -374,11 +374,12 @@
                 <h2 style="margin-bottom: 20px; color: #333;">Kayıtlı Kullanıcılar</h2>
                 
                 <!-- Filtre ve Arama -->
-                <div style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center;">
-                    <div style="flex: 1;">
-                        <input type="text" id="searchInput" placeholder="🔍 Kullanıcı ara (ad, soyad, kullanıcı adı...)" 
+                <div style="display: flex; gap: 15px; margin-bottom: 25px; align-items: center; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <input type="text" id="searchInput" placeholder="🔍 Ara (ad, kullanıcı adı...)" 
                                style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
                     </div>
+                    <button type="button" class="btn-primary" onclick="loadUsers(0)" style="padding: 10px 20px;">Son 50</button>
                     <div>
                         <select id="roleFilter" style="padding: 12px 20px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px; min-width: 150px;">
                             <option value="">Tüm Roller</option>
@@ -554,7 +555,7 @@
         // Yetki kontrolü
         function checkAuth() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -614,21 +615,22 @@
             }
         }
 
-        // Kullanıcıları yükle
-        async function loadUsers() {
+        let searchUserDebounce = null;
+        const USER_PAGE_SIZE = 50;
+        // Kullanıcıları yükle (limit ile - arama/sayfalama)
+        async function loadUsers(offset = 0, append = false) {
             try {
                 const user = JSON.parse(localStorage.getItem('currentUser'));
-                let url = `${API_URL}/users`;
-                
-                // Yönetici ise sadece kendi şubesini göster
-                if (user.rol === 'yonetici' && user.subeId) {
-                    url += `?subeId=${user.subeId}`;
-                }
-                // Admin ise tüm şubeleri göster
-                
+                const q = document.getElementById('searchInput')?.value.trim() || '';
+                let url = `${API_URL}/users?limit=${USER_PAGE_SIZE}&offset=${offset}`;
+                if (user.rol === 'yonetici' && user.subeId) url += `&subeId=${user.subeId}`;
+                if (q) url += `&q=${encodeURIComponent(q)}`;
                 const response = await fetch(url);
-                allUsers = await response.json();
-                displayUsers();
+                const data = await response.json();
+                const rows = Array.isArray(data) ? data : (data.rows || []);
+                if (append) allUsers = (allUsers || []).concat(rows);
+                else allUsers = rows;
+                filterUsers();
             } catch (error) {
                 console.error('Kullanıcılar yüklenemedi:', error);
             }
@@ -745,26 +747,21 @@
         });
 
         // Arama ve filtre
-        document.getElementById('searchInput')?.addEventListener('input', filterUsers);
+        document.getElementById('searchInput')?.addEventListener('input', function() {
+            clearTimeout(searchUserDebounce);
+            searchUserDebounce = setTimeout(() => loadUsers(0), 350);
+        });
         document.getElementById('roleFilter')?.addEventListener('change', filterUsers);
         document.getElementById('subeFilter')?.addEventListener('change', filterUsers);
 
         function filterUsers() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
             const roleFilter = document.getElementById('roleFilter').value;
             const subeFilter = document.getElementById('subeFilter')?.value || '';
 
-            let filtered = allUsers.filter(user => {
-                const matchesSearch = 
-                    user.adSoyad.toLowerCase().includes(searchTerm) ||
-                    user.kullaniciAdi.toLowerCase().includes(searchTerm) ||
-                    (user.telefon && user.telefon.includes(searchTerm)) ||
-                    (user.email && user.email.toLowerCase().includes(searchTerm));
-
+            let filtered = (allUsers || []).filter(user => {
                 const matchesRole = !roleFilter || user.rol === roleFilter;
                 const matchesSube = !subeFilter || String(user.subeId || '') === subeFilter;
-
-                return matchesSearch && matchesRole && matchesSube;
+                return matchesRole && matchesSube;
             });
 
             displayUsers(filtered);
@@ -922,12 +919,6 @@
         }
 
         // Çıkış
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
-
         // Mesaj göster
         function showMessage(msg) {
             const el = document.getElementById('successMessage');

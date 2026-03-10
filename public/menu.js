@@ -14,7 +14,7 @@
                 { href: 'dashboard.html', text: '📊 Dashboard' },
                 { href: 'index.html', text: '👥 Öğrenciler' },
                 { href: 'gruplar.html', text: '📊 Gruplar' },
-                { href: 'testler.html', text: '🧪 Testler' },
+                // { href: 'testler.html', text: '🧪 Testler' }, // Gizli - ileride tekrar açılabilir
                 { href: 'odemeler.html', text: '💰 Ödemeler' },
                 { href: 'donemler.html', text: '📅 Dönemler' },
                 { href: 'raporlar.html', text: '📑 Raporlar' }
@@ -28,8 +28,8 @@
             }
         } else if (user.rol === 'antrenor') {
             items = [
-                { href: 'gruplar.html', text: '📊 Gruplar' },
-                { href: 'testler.html', text: '🧪 Testler' }
+                { href: 'gruplar.html', text: '📊 Gruplar' }
+                // { href: 'testler.html', text: '🧪 Testler' } // Gizli - ileride tekrar açılabilir
             ];
         }
 

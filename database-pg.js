@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const { normalizeRows, normalizeRow } = require('./pg-normalize');
@@ -56,10 +58,30 @@ async function init() {
   const client = await pool.connect();
   try {
     await createSchema(client);
+    await ensureIndexes(client);
     await migratePasswordsToHash(client);
     await ensureAdminUser(client);
   } finally {
     client.release();
+  }
+}
+
+async function ensureIndexes(client) {
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_students_subeId ON students(subeId)',
+    'CREATE INDEX IF NOT EXISTS idx_students_durum ON students(durum)',
+    'CREATE INDEX IF NOT EXISTS idx_students_groupId ON students(groupId)',
+    'CREATE INDEX IF NOT EXISTS idx_students_kayitTarihi ON students(kayitTarihi)',
+    'CREATE INDEX IF NOT EXISTS idx_users_kullaniciAdi ON users(kullaniciAdi)',
+    'CREATE INDEX IF NOT EXISTS idx_users_subeId ON users(subeId)',
+    'CREATE INDEX IF NOT EXISTS idx_groups_subeId ON groups(subeId)',
+    'CREATE INDEX IF NOT EXISTS idx_groups_durum ON groups(durum)',
+    'CREATE INDEX IF NOT EXISTS idx_spp_studentId ON student_period_payments(studentId)',
+    'CREATE INDEX IF NOT EXISTS idx_spp_periodId ON student_period_payments(periodId)',
+    'CREATE INDEX IF NOT EXISTS idx_spp_odemeDurumu ON student_period_payments(odemeDurumu)'
+  ];
+  for (const sql of indexes) {
+    await client.query(sql).catch(() => {});
   }
 }
 
@@ -354,12 +376,31 @@ async function migratePasswordsToHash(client) {
 }
 
 async function ensureAdminUser(client) {
-  const adminHash = bcrypt.hashSync('admin123', 10);
+  const check = await client.query("SELECT id, sifre FROM users WHERE kullaniciAdi = 'admin'");
+  if (check.rows.length > 0) {
+    const admin = check.rows[0];
+    const flagCheck = await client.query("SELECT deger FROM settings WHERE anahtar = 'admin_initial_password_hash'");
+    if (flagCheck.rows.length === 0) {
+      await client.query(`
+        INSERT INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', $1)
+        ON CONFLICT (anahtar) DO UPDATE SET deger = $1
+      `, [admin.sifre]);
+    }
+    return;
+  }
+  const randomPw = crypto.randomBytes(12).toString('base64url');
+  const adminHash = bcrypt.hashSync(randomPw, 10);
   await client.query(`
     INSERT INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, aktif, olusturmaTarihi)
     VALUES ('admin', $1, 'admin', 'Sistem Yöneticisi', '', 1, NOW()::text)
-    ON CONFLICT (kullaniciAdi) DO NOTHING
   `, [adminHash]);
+  await client.query(`
+    INSERT INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', $1)
+    ON CONFLICT (anahtar) DO UPDATE SET deger = $1
+  `, [adminHash]);
+  const credPath = path.join(__dirname, 'admin-initial-credentials.txt');
+  fs.writeFileSync(credPath, `Futbol Okulu - İlk Giriş Bilgileri\n${'='.repeat(40)}\nKullanıcı: admin\nŞifre: ${randomPw}\n\n⚠️ İlk girişte şifreyi değiştirin ve bu dosyayı silin!\n`);
+  console.log('⚠️ Admin oluşturuldu. Şifre: admin-initial-credentials.txt');
 }
 
 // ============ ÖĞRENCİ FONKSİYONLARI ============
@@ -372,6 +413,37 @@ async function getAllStudents(subeId = null) {
   }
   const res = await pool.query('SELECT * FROM students ORDER BY id DESC');
   return res.rows;
+}
+
+/** Öğrenci arama + sayfalama (q, limit, offset, durum) */
+async function searchStudents(subeId = null, opts = {}) {
+  await ensureReady();
+  const { q = '', limit = 50, offset = 0, durum } = opts;
+  const params = [];
+  const where = [];
+  let i = 1;
+  if (subeId) { where.push(`s.subeId = $${i++}`); params.push(subeId); }
+  if (durum === 'Aktif') { where.push(`s.durum = 'Aktif'`); }
+  else if (durum === 'Pasif') { where.push(`s.durum != 'Aktif'`); }
+  const searchTerm = (q || '').trim();
+  if (searchTerm) {
+    const like = '%' + String(searchTerm).replace(/[%_\\]/g, '\\$&') + '%';
+    where.push(`(s.ad ILIKE $${i} OR s.soyad ILIKE $${i} OR s.veliAdi ILIKE $${i} OR s.veliTelefon1 ILIKE $${i} OR s.email ILIKE $${i} OR s.tcNo ILIKE $${i})`);
+    params.push(like);
+    i++;
+  }
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const countRes = await pool.query(`SELECT COUNT(*)::int AS c FROM students s ${whereClause}`, params);
+  const total = countRes.rows[0]?.c || 0;
+  const limitVal = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+  const offsetVal = Math.max(0, parseInt(offset, 10) || 0);
+  const limitParam = params.length + 1;
+  params.push(limitVal, offsetVal);
+  const res = await pool.query(`
+    SELECT s.* FROM students s ${whereClause}
+    ORDER BY s.id DESC LIMIT $${limitParam} OFFSET $${limitParam + 1}
+  `, params);
+  return { rows: res.rows, total };
 }
 
 async function getStudentById(id) {
@@ -491,9 +563,12 @@ async function createProportionalDebtsForNewStudent(client, studentId, kayitTari
         `, [studentId, period.id, period.tutar, new Date().toISOString()]);
         continue;
       }
-      const toplamGun = Math.ceil((bitisDate - baslangicDate) / (1000 * 60 * 60 * 24));
-      const kalanGun = Math.ceil((bitisDate - kayitDate) / (1000 * 60 * 60 * 24)) + 1;
-      const orantiliTutar = (period.tutar * kalanGun) / toplamGun;
+      // Orantılı hesaplama: Dönem haftalara bölünür, kalan hafta sayısına göre tutar hesaplanır
+      const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+      const toplamHafta = Math.max(1, Math.ceil((bitisDate - baslangicDate) / MS_PER_WEEK));
+      const kalanHafta = Math.ceil((bitisDate - kayitDate) / MS_PER_WEEK);
+      const kalanHaftaClamped = Math.min(toplamHafta, Math.max(1, kalanHafta));
+      const orantiliTutar = (period.tutar * kalanHaftaClamped) / toplamHafta;
       await client.query(`
         INSERT INTO student_period_payments (studentId, periodId, tutar, odemeDurumu, olusturmaTarihi)
         VALUES ($1, $2, $3, 'Borçlu', $4)
@@ -552,6 +627,35 @@ async function getAllUsers(subeId = null) {
   return res.rows;
 }
 
+/** Kullanıcı arama + sayfalama */
+async function searchUsers(subeId = null, opts = {}) {
+  await ensureReady();
+  const { q = '', limit = 50, offset = 0 } = opts;
+  const params = [];
+  const where = [];
+  let i = 1;
+  if (subeId) { where.push(`subeId = $${i++}`); params.push(subeId); }
+  const searchTerm = (q || '').trim();
+  if (searchTerm) {
+    const like = '%' + String(searchTerm).replace(/[%_\\]/g, '\\$&') + '%';
+    where.push(`(kullaniciAdi ILIKE $${i} OR adSoyad ILIKE $${i} OR telefon ILIKE $${i} OR email ILIKE $${i})`);
+    params.push(like);
+    i++;
+  }
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const countRes = await pool.query(`SELECT COUNT(*)::int AS c FROM users ${whereClause}`, params);
+  const total = countRes.rows[0]?.c || 0;
+  const limitVal = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+  const offsetVal = Math.max(0, parseInt(offset, 10) || 0);
+  const limitParam = params.length + 1;
+  params.push(limitVal, offsetVal);
+  const res = await pool.query(`
+    SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, aktif, olusturmaTarihi
+    FROM users ${whereClause} ORDER BY id DESC LIMIT $${limitParam} OFFSET $${limitParam + 1}
+  `, params);
+  return { rows: res.rows, total };
+}
+
 async function getUserById(id) {
   await ensureReady();
   const res = await pool.query('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, studentId, subeId, aktif, olusturmaTarihi FROM users WHERE id = $1', [id]);
@@ -571,11 +675,15 @@ async function createUser(user) {
 
 async function updateUser(id, user) {
   await ensureReady();
+  const existing = await pool.query('SELECT kullaniciAdi FROM users WHERE id = $1', [id]);
   if (user.sifre) {
     const hashedSifre = bcrypt.hashSync(user.sifre, 10);
     await pool.query(`
       UPDATE users SET kullaniciAdi = $1, sifre = $2, rol = $3, adSoyad = $4, telefon = $5, email = $6, aktif = $7, subeId = $8 WHERE id = $9
     `, [user.kullaniciAdi, hashedSifre, user.rol, user.adSoyad, user.telefon || null, user.email || null, user.aktif !== undefined ? user.aktif : 1, user.subeId || null, id]);
+    if (existing.rows[0]?.kullaniciAdi === 'admin') {
+      await pool.query("DELETE FROM settings WHERE anahtar = 'admin_initial_password_hash'");
+    }
   } else {
     await pool.query(`
       UPDATE users SET kullaniciAdi = $1, rol = $2, adSoyad = $3, telefon = $4, email = $5, aktif = $6, subeId = $7 WHERE id = $8
@@ -869,6 +977,48 @@ async function getAllStudentPeriodPayments(subeId = null) {
   return res.rows;
 }
 
+/** Ödeme arama + sayfalama (öğrenci adı, dönem, odemeDurumu) */
+async function searchStudentPeriodPayments(subeId = null, opts = {}) {
+  await ensureReady();
+  const { q = '', limit = 50, offset = 0, periodId, odemeDurumu } = opts;
+  const params = [];
+  const where = [];
+  let i = 1;
+  if (subeId) { where.push('s.subeId = $' + i + ' AND pp.subeId = $' + i); params.push(subeId); i++; }
+  if (periodId) { where.push(`pp.id = $${i++}`); params.push(periodId); }
+  if (odemeDurumu) { where.push(`spp.odemeDurumu = $${i++}`); params.push(odemeDurumu); }
+  const searchTerm = (q || '').trim();
+  if (searchTerm) {
+    const like = '%' + String(searchTerm).replace(/[%_\\]/g, '\\$&') + '%';
+    where.push(`(s.ad ILIKE $${i} OR s.soyad ILIKE $${i} OR s.veliAdi ILIKE $${i})`);
+    params.push(like);
+    i++;
+  }
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const countRes = await pool.query(`
+    SELECT COUNT(*)::int AS c FROM student_period_payments spp
+    JOIN students s ON spp.studentId = s.id
+    JOIN payment_periods pp ON spp.periodId = pp.id
+    ${whereClause}
+  `, params);
+  const total = countRes.rows[0]?.c || 0;
+  const limitVal = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+  const offsetVal = Math.max(0, parseInt(offset, 10) || 0);
+  const limitParam = params.length + 1;
+  params.push(limitVal, offsetVal);
+  const res = await pool.query(`
+    SELECT spp.*, s.ad, s.soyad, s.subeId, s.kayitTarihi, s.ayrilmaTarihi,
+      (SELECT MAX(h.degisimTarihi) FROM student_status_history h WHERE h.studentId = s.id AND h.yeniDurum = 'Aktif') AS sonAktifTarihi,
+      pp.donemAdi, pp.baslangicTarihi, pp.bitisTarihi, pp.subeId AS periodSubeId
+    FROM student_period_payments spp
+    JOIN students s ON spp.studentId = s.id
+    JOIN payment_periods pp ON spp.periodId = pp.id
+    ${whereClause}
+    ORDER BY pp.baslangicTarihi DESC, s.ad LIMIT $${limitParam} OFFSET $${limitParam + 1}
+  `, params);
+  return { rows: res.rows, total };
+}
+
 async function makePayment(paymentId, paymentData) {
   await ensureReady();
   await pool.query(`
@@ -1153,6 +1303,26 @@ async function saveAttendance({ groupId, date, instructorId, entries }) {
   }
 }
 
+/** Öğrencinin yoklama kayıtlarını getir (veli için - son N gün) */
+async function getStudentAttendance(studentId, days = 60) {
+  await ensureReady();
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  const startStr = startDate.toISOString().split('T')[0];
+  const rows = (await pool.query(`
+    SELECT ae.status, s.date, g.groupName
+    FROM attendance_entries ae
+    JOIN attendance_sessions s ON ae.sessionId = s.id
+    JOIN groups g ON s.groupId = g.id
+    WHERE ae.studentId = $1 AND s.date >= $2
+    ORDER BY s.date DESC
+    LIMIT 100
+  `, [studentId, startStr])).rows;
+  const present = rows.filter(r => (r.status || '').trim() === 'Var').length;
+  const absent = rows.filter(r => (r.status || '').trim() === 'Yok').length;
+  return { rows, present, absent, total: rows.length };
+}
+
 async function getAttendanceReport(subeId = null, startDate, endDate, groupId = null) {
   await ensureReady();
   const params = [startDate, endDate];
@@ -1388,14 +1558,34 @@ async function getReportSummary(subeId, startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
+  function parseBirthDate(val) {
+    if (!val) return null;
+    const str = String(val).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str) || str.includes('-') || str.includes('/')) {
+      const d = new Date(str);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const num = parseFloat(str);
+    if (!isNaN(num) && num >= 1 && num < 100000 && !str.includes('-') && !str.includes('/')) {
+      return new Date(Math.round((num - 25569) * 86400 * 1000));
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
   students.forEach(s => {
     if (s.dogumtarihi) {
-      const birth = new Date(s.dogumtarihi);
-      const now = new Date();
-      let age = now.getFullYear() - birth.getFullYear();
-      const m = now.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age -= 1;
-      ageStats[age] = (ageStats[age] || 0) + 1;
+      const birth = parseBirthDate(s.dogumtarihi);
+      if (birth) {
+        const now = new Date();
+        let age = now.getFullYear() - birth.getFullYear();
+        const m = now.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age -= 1;
+        if (age < 0 || age > 120) age = '-';
+        ageStats[age] = (ageStats[age] || 0) + 1;
+      } else {
+        ageStats['-'] = (ageStats['-'] || 0) + 1;
+      }
     } else {
       ageStats['-'] = (ageStats['-'] || 0) + 1;
     }
@@ -1565,9 +1755,11 @@ async function createProportionalDebtsForReturningStudent(studentId, dönüsTari
       if (donusDate > bitisDate) continue;
       let orantiliTutar = period.tutar;
       if (donusDate > baslangicDate) {
-        const toplamGun = Math.ceil((bitisDate - baslangicDate) / (1000 * 60 * 60 * 24));
-        const kalanGun = Math.ceil((bitisDate - donusDate) / (1000 * 60 * 60 * 24)) + 1;
-        orantiliTutar = (period.tutar * kalanGun) / toplamGun;
+        const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+        const toplamHafta = Math.max(1, Math.ceil((bitisDate - baslangicDate) / MS_PER_WEEK));
+        const kalanHafta = Math.ceil((bitisDate - donusDate) / MS_PER_WEEK);
+        const kalanHaftaClamped = Math.min(toplamHafta, Math.max(1, kalanHafta));
+        orantiliTutar = (period.tutar * kalanHaftaClamped) / toplamHafta;
       }
       await client.query(`
         INSERT INTO student_period_payments (studentId, periodId, tutar, odemeDurumu, olusturmaTarihi)
@@ -1605,6 +1797,7 @@ module.exports = {
   transferStudentsToGroup,
   deleteGroup,
   getAllStudents,
+  searchStudents,
   getStudentById,
   getStudentsByIds,
   getParentStudentIds,
@@ -1617,6 +1810,7 @@ module.exports = {
   getActiveStudents,
   getInactiveStudents,
   getAllUsers,
+  searchUsers,
   getUserById,
   createUser,
   updateUser,
@@ -1640,6 +1834,7 @@ module.exports = {
   getPeriodPaymentStats,
   getStudentPeriodPayments,
   getAllStudentPeriodPayments,
+  searchStudentPeriodPayments,
   makePayment,
   getPaymentReceipt,
   updatePayment,
@@ -1658,6 +1853,7 @@ module.exports = {
   getAttendanceSession,
   getAttendanceEntries,
   saveAttendance,
+  getStudentAttendance,
   getAttendanceReport,
   getAttendanceMonthlyTrend,
   createTestSession,

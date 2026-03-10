@@ -358,6 +358,94 @@
             color: #721c24;
             display: block;
         }
+
+        /* Yoklama modal - ekrana sığacak, butonlar her zaman görünür */
+        #attendanceModal .attendance-modal-content {
+            max-width: 700px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #attendanceModal .attendance-modal-header {
+            flex-shrink: 0;
+            margin-bottom: 10px;
+        }
+        #attendanceModal .attendance-modal-header h2 {
+            font-size: 18px;
+        }
+        #attendanceModal .attendance-info {
+            background: #f8f9fa;
+            padding: 10px 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+        }
+        #attendanceModal .attendance-info h3 {
+            font-size: 14px;
+            color: #667eea;
+            margin: 0 0 6px 0;
+        }
+        #attendanceModal .attendance-date-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        #attendanceModal .attendance-date-row label {
+            font-size: 13px;
+            color: #666;
+        }
+        #attendanceModal .attendance-count {
+            font-size: 12px;
+            font-weight: bold;
+            margin: 4px 0 0 0;
+        }
+        #attendanceModal .attendance-table-wrap {
+            flex: 1;
+            min-height: 0;
+            overflow-y: auto;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+        }
+        #attendanceModal .attendance-modal-buttons {
+            flex-shrink: 0;
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #e2e8f0;
+        }
+        #attendanceModal .attendance-modal-buttons button {
+            flex: 1;
+            padding: 10px 12px;
+            font-size: 13px;
+        }
+        /* Yoklama tablosu - satırlar arası çizgi (karışıklık önleme) */
+        #attendanceModal .attendance-table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+        #attendanceModal .attendance-table thead th {
+            border-bottom: 2px solid #667eea;
+            padding: 8px 8px;
+            text-align: left;
+            background: #f0f4ff;
+            font-size: 12px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        #attendanceModal .attendance-table tbody tr {
+            border-bottom: 1px solid #cbd5e1;
+        }
+        #attendanceModal .attendance-table tbody tr:hover {
+            background: #f8fafc;
+        }
+        #attendanceModal .attendance-table tbody td {
+            padding: 8px;
+            vertical-align: middle;
+            font-size: 13px;
+        }
     </style>
     <link rel="stylesheet" href="css/responsive.css">
 </head>
@@ -481,39 +569,39 @@
     </div>
     <!-- Yoklama Modal -->
     <div id="attendanceModal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
-            <div class="modal-header">
+        <div class="modal-content attendance-modal-content">
+            <div class="modal-header attendance-modal-header">
                 <h2>📋 Yoklama Listesi</h2>
                 <span class="close-modal" onclick="closeAttendanceModal()">&times;</span>
             </div>
             
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                <h3 id="attendanceGroupName" style="color: #667eea;"></h3>
-                <div style="display: flex; gap: 10px; align-items: center; margin-top: 5px;">
-                    <label for="attendanceDateInput" style="color: #666;">Tarih:</label>
+            <div class="attendance-info">
+                <h3 id="attendanceGroupName"></h3>
+                <div class="attendance-date-row">
+                    <label for="attendanceDateInput">Tarih:</label>
                     <input type="date" id="attendanceDateInput" />
                 </div>
-                <p id="attendanceCount" style="font-weight: bold; margin-top: 5px;"></p>
+                <p id="attendanceCount" class="attendance-count"></p>
             </div>
 
-            <div class="table-wrap">
-            <table style="width: 100%;">
-                <thead>
-                    <tr>
-                        <th>Sıra</th>
-                        <th>Öğrenci Adı</th>
-                        <th>Doğum Tarihi</th>
-                        <th>Gelmedi</th>
-                    </tr>
-                </thead>
-                <tbody id="attendanceList"></tbody>
-            </table>
+            <div class="attendance-table-wrap">
+                <table id="attendanceTable" class="attendance-table">
+                    <thead>
+                        <tr>
+                            <th>Sıra</th>
+                            <th>Öğrenci Adı</th>
+                            <th>Doğum Tarihi</th>
+                            <th>Gelmedi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendanceList"></tbody>
+                </table>
             </div>
 
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn-success" onclick="saveAttendance()" style="flex: 1;">💾 Kaydet</button>
-                <button class="btn-primary" onclick="downloadAttendancePDF()" style="flex: 1;">📄 PDF İndir</button>
-                <button class="btn-danger" onclick="closeAttendanceModal()" style="flex: 1;">Kapat</button>
+            <div class="attendance-modal-buttons">
+                <button class="btn-success" onclick="saveAttendance()">💾 Kaydet</button>
+                <button class="btn-primary" onclick="downloadAttendancePDF()">📄 PDF İndir</button>
+                <button class="btn-danger" onclick="closeAttendanceModal()">Kapat</button>
             </div>
         </div>
     </div>
@@ -547,7 +635,7 @@
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -556,12 +644,6 @@
             document.getElementById('currentUserName').textContent = userData.adSoyad;
           
         })();
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
 
         function showMessage(text, type = 'success') {
             const msg = document.getElementById('messageDiv');
@@ -1015,13 +1097,25 @@
             }
         }
         
-        function downloadAttendancePDF() {
+        async function downloadAttendancePDF() {
             const groupName = document.getElementById('attendanceGroupName').textContent;
             const date = currentAttendanceDate || new Date().toISOString().split('T')[0];
-            
-            // PDF oluşturma için backend'e istek at
             const studentIds = currentAttendanceData.map(s => s.id).join(',');
-            window.open(`${API_URL}/groups/attendance-pdf?groupName=${encodeURIComponent(groupName)}&date=${date}&students=${studentIds}`, '_blank');
+            const url = `${API_URL}/groups/attendance-pdf?groupName=${encodeURIComponent(groupName)}&date=${date}&students=${studentIds}`;
+            try {
+                const res = await fetch(url);
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    showMessage('❌ PDF alınamadı: ' + (err.error || res.status), 'error');
+                    return;
+                }
+                const blob = await res.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                window.open(objectUrl, '_blank');
+                setTimeout(() => URL.revokeObjectURL(objectUrl), 10000);
+            } catch (e) {
+                showMessage('❌ PDF açılamadı: ' + (e.message || 'Bilinmeyen hata'), 'error');
+            }
         }
         const currentUser = JSON.parse(localStorage.getItem('currentUser'));
         if (currentUser && currentUser.rol === 'admin') {

@@ -422,7 +422,7 @@
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -442,12 +442,6 @@
         document.getElementById('dateInfo').textContent = new Date().toLocaleDateString('tr-TR', options);
 
         // Menü ortak dosyadan yüklenir
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
 
         async function loadSubeFilter() {
             const select = document.getElementById('subeFilter');

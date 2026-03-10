@@ -6,6 +6,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const bodyParser = require('body-parser');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
@@ -115,6 +116,7 @@ app.use((req, res, next) => {
   if (req.method === 'POST' && req.path === '/api/login') return loginLimiter(req, res, next);
   next();
 });
+app.use(cookieParser());
 app.use(bodyParser.json({ limit: '1mb' }));
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 app.use(express.static('public'));
@@ -195,12 +197,23 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Tüm öğrencileri getir (şube filtrelemeli)
+// Öğrencileri getir (şube filtrelemeli) - limit varsa arama/sayfalama
 app.get('/api/students', auth.requireStaff, async (req, res) => {
   try {
     const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
-    const students = await db.getAllStudents(subeId);
-    res.json(students);
+    const limit = safeParseId(req.query.limit);
+    if (limit && limit > 0) {
+      const result = await db.searchStudents(subeId, {
+        q: req.query.q || '',
+        limit: Math.min(limit, 500),
+        offset: Math.max(0, safeParseId(req.query.offset) || 0),
+        durum: req.query.durum || null
+      });
+      res.json({ rows: result.rows, total: result.total });
+    } else {
+      const students = await db.getAllStudents(subeId);
+      res.json(students);
+    }
   } catch (error) {
     res.status(500).json({ error: safeErrorMsg(error.message) });
   }
@@ -242,7 +255,7 @@ app.post('/api/students/import', auth.requireAdminOrYonetici, (req, res, next) =
     const groups = await db.getAllGroups(null);
     const effectiveSubeId = req.effectiveSubeId;
 
-    const wb = XLSX.read(req.file.buffer, { type: 'buffer' });
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
     const sheetName = wb.SheetNames[0];
     const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
@@ -252,7 +265,7 @@ app.post('/api/students/import', auth.requireAdminOrYonetici, (req, res, next) =
     const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
     const col = (name) => {
       const aliases = {
-        ad: ['ad', 'adi', 'adı', 'isim', 'öğrenci adı'],
+        ad: ['öğrenci adı', 'adi', 'adı', 'ad', 'isim'],
         soyad: ['soyad', 'soyadi', 'soyadı', 'soy isim'],
         tc: ['tc', 'tc no', 'tcno', 'tckn', 'kimlik'],
         dogumtarihi: ['doğum tarihi', 'dogum tarihi', 'dogumtarihi', 'doğum', 'birth'],
@@ -265,9 +278,15 @@ app.post('/api/students/import', auth.requireAdminOrYonetici, (req, res, next) =
         grup: ['grup', 'grup adı', 'grup adi', 'group'],
         kayitkaynagi: ['kayıt kaynağı', 'kayit kaynagi', 'kaynak']
       };
+      const excludeFor = { ad: ['soyad', 'veli'] };
       const keys = aliases[name] || [name];
+      const exclude = excludeFor[name] || [];
       for (const k of keys) {
-        const i = headers.findIndex(h => (h && (h.includes(k) || k.includes(h))));
+        const i = headers.findIndex(h => {
+          if (!h) return false;
+          if (exclude.some(ex => h.includes(ex))) return false;
+          return h.includes(k);
+        });
         if (i >= 0) return i;
       }
       return -1;
@@ -317,11 +336,23 @@ app.post('/api/students/import', auth.requireAdminOrYonetici, (req, res, next) =
         results.errors.push({ row: i + 1, msg: `Grup "${grupAdi}" bulunamadı. Önce grupları oluşturun.` });
         continue;
       }
-      const dogumStr = get(col('dogumtarihi'));
-      let dogumTarihi = dogumStr;
-      if (dogumStr) {
-        const d = new Date(dogumStr);
-        if (!isNaN(d.getTime())) dogumTarihi = d.toISOString().split('T')[0];
+      const dogumColIdx = col('dogumtarihi');
+      const dogumRaw = dogumColIdx >= 0 ? row[dogumColIdx] : null;
+      let dogumTarihi = '';
+      if (dogumRaw instanceof Date && !isNaN(dogumRaw.getTime())) {
+        dogumTarihi = dogumRaw.toISOString().split('T')[0];
+      } else {
+        const dogumStr = get(dogumColIdx);
+        if (dogumStr) {
+          let d;
+          const num = parseFloat(dogumStr);
+          if (!isNaN(num) && num >= 1 && num < 100000) {
+            d = new Date(Math.round((num - 25569) * 86400 * 1000));
+          } else {
+            d = new Date(dogumStr);
+          }
+          if (!isNaN(d.getTime())) dogumTarihi = d.toISOString().split('T')[0];
+        }
       }
       if (!dogumTarihi) dogumTarihi = today;
 
@@ -488,11 +519,11 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
     }
     if (user.sifre.startsWith('$2')) {
-      sifreGecerli = bcrypt.compareSync(sifre, user.sifre);
+      sifreGecerli = await bcrypt.compare(sifre, user.sifre);
     } else {
       sifreGecerli = user.sifre === sifre;
       if (sifreGecerli) {
-        const hash = bcrypt.hashSync(sifre, 10);
+        const hash = await bcrypt.hash(sifre, 10);
         await db.updateUserPassword(user.id, hash);
       }
     }
@@ -505,31 +536,51 @@ app.post('/api/login', async (req, res) => {
     }
     
     const token = auth.generateToken(user);
-    const mustChangePassword = user.kullaniciAdi === 'admin' && sifre === 'admin123';
+    let mustChangePassword = false;
+    if (user.kullaniciAdi === 'admin') {
+      const initialHash = await db.getSetting('admin_initial_password_hash');
+      mustChangePassword = !!initialHash && (await bcrypt.compare(sifre, initialHash));
+    }
+    const userPayload = { id: user.id, kullaniciAdi: user.kullaniciAdi, rol: user.rol, adSoyad: user.adSoyad, studentId: user.studentId, subeId: user.subeId };
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: 'strict',
+      maxAge: 24 * 60 * 60 * 1000,
+      path: '/'
+    });
     res.json({ 
       success: true, 
-      token,
       mustChangePassword: !!mustChangePassword,
-      user: { 
-        id: user.id, 
-        kullaniciAdi: user.kullaniciAdi, 
-        rol: user.rol,
-        adSoyad: user.adSoyad,
-        studentId: user.studentId,
-        subeId: user.subeId
-      } 
+      user: userPayload
     });
   } catch (error) {
     res.status(500).json({ error: isProduction ? 'Giriş sırasında hata oluştu' : error.message });
   }
 });
 
-// Tüm kullanıcıları getir (şube filtrelemeli)
+// Çıkış (HttpOnly cookie temizle)
+app.post('/api/logout', (req, res) => {
+  res.clearCookie('token', { path: '/' });
+  res.json({ success: true });
+});
+
+// Kullanıcıları getir (şube filtrelemeli) - limit varsa arama/sayfalama
 app.get('/api/users', auth.requireAdminOrYonetici, async (req, res) => {
   try {
     const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
-    const users = await db.getAllUsers(subeId);
-    res.json(users);
+    const limit = safeParseId(req.query.limit);
+    if (limit && limit > 0) {
+      const result = await db.searchUsers(subeId, {
+        q: req.query.q || '',
+        limit: Math.min(limit, 500),
+        offset: Math.max(0, safeParseId(req.query.offset) || 0)
+      });
+      res.json({ rows: result.rows, total: result.total });
+    } else {
+      const users = await db.getAllUsers(subeId);
+      res.json(users);
+    }
   } catch (error) {
     res.status(500).json({ error: safeErrorMsg(error.message) });
   }
@@ -926,12 +977,42 @@ app.get('/api/students/:studentId/period-payments', async (req, res) => {
   }
 });
 
-// Tüm öğrencilerin dönem ödemelerini getir
+// Ödeme istatistikleri (dönem bazlı - sayfa yükü olmadan)
+app.get('/api/period-payments/stats', auth.requireStaff, async (req, res) => {
+  try {
+    const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
+    let periodIds = [];
+    const periodId = safeQueryId(req.query.periodId);
+    if (periodId) periodIds = [periodId];
+    else {
+      const periods = await db.getAllPeriods(subeId);
+      periodIds = periods.map(p => p.id);
+    }
+    const stats = await db.getPeriodPaymentStats(periodIds, subeId);
+    res.json(stats);
+  } catch (error) {
+    res.status(500).json({ error: safeErrorMsg(error.message) });
+  }
+});
+
+// Öğrencilerin dönem ödemelerini getir - limit varsa arama/sayfalama
 app.get('/api/period-payments', auth.requireStaff, async (req, res) => {
   try {
     const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
-    const payments = await db.getAllStudentPeriodPayments(subeId);
-    res.json(payments);
+    const limit = safeParseId(req.query.limit);
+    if (limit && limit > 0) {
+      const result = await db.searchStudentPeriodPayments(subeId, {
+        q: req.query.q || '',
+        limit: Math.min(limit, 500),
+        offset: Math.max(0, safeParseId(req.query.offset) || 0),
+        periodId: safeQueryId(req.query.periodId),
+        odemeDurumu: req.query.odemeDurumu || null
+      });
+      res.json({ rows: result.rows, total: result.total });
+    } else {
+      const payments = await db.getAllStudentPeriodPayments(subeId);
+      res.json(payments);
+    }
   } catch (error) {
     res.status(500).json({ error: safeErrorMsg(error.message) });
   }
@@ -987,56 +1068,78 @@ app.delete('/api/period-payments/:id', auth.requireAdminOrYonetici, async (req, 
     res.status(500).json({ error: safeErrorMsg(error.message) });
   }
 });
+// Ödeme makbuzu PDF içeriğini çiz (ortak fonksiyon - Türkçe karakter + modern tasarım)
+function renderReceiptContent(doc, payment) {
+  const margin = 50;
+  const pageWidth = 595;
+  const contentWidth = pageWidth - margin * 2;
+
+  doc.fillColor('#1e3a8a').rect(margin, 40, contentWidth, 55).fill();
+  doc.fillColor('#ffffff').fontSize(22).text('BEŞİKTAŞ FUTBOL OKULU', margin, 52, { width: contentWidth, align: 'center' });
+  doc.fontSize(14).text('ÖDEME MAKBUZU', margin, 78, { width: contentWidth, align: 'center' });
+  doc.fillColor('#000000');
+
+  const boxTop = 115;
+  const boxPadding = 20;
+  const boxHeight = 180;
+  doc.strokeColor('#e2e8f0').fillColor('#f8fafc').rect(margin, boxTop, contentWidth, boxHeight).fillAndStroke();
+  doc.fillColor('#1e293b').fontSize(11);
+
+  const leftCol = margin + boxPadding;
+  const rightCol = margin + contentWidth / 2 + 10;
+  let y = boxTop + boxPadding;
+
+  doc.fontSize(10).fillColor('#64748b').text('Sporcu', leftCol, y);
+  doc.fillColor('#0f172a').fontSize(12).text(payment.ad + ' ' + payment.soyad, leftCol, y + 12);
+  doc.fillColor('#64748b').fontSize(10).text('TC Kimlik No', rightCol, y);
+  doc.fillColor('#0f172a').fontSize(11).text(payment.tcNo || '-', rightCol, y + 12);
+  y += 38;
+
+  doc.fillColor('#64748b').fontSize(10).text('Ödeme Tarihi', leftCol, y);
+  doc.fillColor('#0f172a').fontSize(11).text(payment.odemeTarihi ? new Date(payment.odemeTarihi).toLocaleDateString('tr-TR') : '-', leftCol, y + 12);
+  doc.fillColor('#64748b').fontSize(10).text('Ödeme Tipi', rightCol, y);
+  doc.fillColor('#0f172a').fontSize(11).text(payment.odemeYontemi || '-', rightCol, y + 12);
+  y += 38;
+
+  doc.fillColor('#64748b').fontSize(10).text('Ödenen Dönem', leftCol, y);
+  doc.fillColor('#0f172a').fontSize(11).text(payment.donemAdi || '-', leftCol, y + 12);
+  doc.fillColor('#64748b').fontSize(10).text('Dönem Tarihleri', rightCol, y);
+  doc.fillColor('#0f172a').fontSize(10).text(
+    new Date(payment.baslangicTarihi).toLocaleDateString('tr-TR') + ' - ' + new Date(payment.bitisTarihi).toLocaleDateString('tr-TR'),
+    rightCol, y + 12, { width: contentWidth / 2 - 20 }
+  );
+  y += 42;
+
+  doc.strokeColor('#e2e8f0').lineWidth(1).moveTo(margin, y).lineTo(margin + contentWidth, y).stroke();
+  y += 12;
+  const tutarText = 'Toplam Tutar: ' + payment.tutar.toFixed(2) + ' TL';
+  doc.fillColor('#1e3a8a').fontSize(14).text(tutarText, margin + boxPadding, y, { width: contentWidth - boxPadding * 2, align: 'right' });
+  doc.fillColor('#64748b');
+
+  const footerY = boxTop + boxHeight + 25;
+  doc.fontSize(9).text('Makbuz No: ' + payment.id, margin, footerY, { width: contentWidth, align: 'center' });
+  doc.text('Düzenlenme: ' + new Date().toLocaleDateString('tr-TR') + ' ' + new Date().toLocaleTimeString('tr-TR'), margin, footerY + 12, { width: contentWidth, align: 'center' });
+}
+
 // Ödeme makbuzu PDF oluştur
 app.get('/api/period-payments/:id/receipt', auth.requireAdminOrYonetici, async (req, res) => {
   try {
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'Geçersiz ID' });
-    
-    // Ödeme bilgisini al
+
     const payment = await db.getPaymentReceipt(id);
-    
-    if (!payment) {
-      return res.status(404).json({ error: 'Ödeme bulunamadı' });
-    }
-    
-    // PDF oluştur
-    const doc = new PDFDocument({ margin: 50 });
+    if (!payment) return res.status(404).json({ error: 'Ödeme bulunamadı' });
+
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fontPath = getPdfFontPath();
     if (fontPath) doc.font(fontPath);
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename=makbuz-${id}.pdf`);
-    
     doc.pipe(res);
-    
-    // Başlık
-    doc.fontSize(20).text('BESIKTAS FUTBOL OKULU', { align: 'center' });
-    doc.fontSize(16).text('ODEME MAKBUZU', { align: 'center' });
-    doc.moveDown(2);
-    
-    // Bilgiler
-    doc.fontSize(12);
-    doc.text('Sporcu: ' + payment.ad + ' ' + payment.soyad);
-    doc.text('TC Kimlik No: ' + (payment.tcNo || '-'));
-    doc.moveDown();
-    
-    doc.text('Odeme Tarihi: ' + (payment.odemeTarihi ? new Date(payment.odemeTarihi).toLocaleDateString('tr-TR') : '-'));
-    doc.text('Odeme Tipi: ' + (payment.odemeYontemi || '-'));
-    doc.moveDown();
-    
-    doc.text('Odenen Donem: ' + payment.donemAdi);
-    doc.text('Donem Tarihleri: ' + new Date(payment.baslangicTarihi).toLocaleDateString('tr-TR') + ' - ' + new Date(payment.bitisTarihi).toLocaleDateString('tr-TR'));
-    doc.moveDown();
-    
-    doc.fontSize(16).text('Toplam Tutar: ' + payment.tutar.toFixed(2) + ' TL', { align: 'right' });
-    doc.moveDown(2);
-    
-    // Alt bilgi
-    doc.fontSize(10).text('Makbuz No: ' + id, { align: 'center' });
-    doc.text('Duzenlenme: ' + new Date().toLocaleDateString('tr-TR') + ' ' + new Date().toLocaleTimeString('tr-TR'), { align: 'center' });
-    
+
+    renderReceiptContent(doc, payment);
     doc.end();
-    
   } catch (error) {
     res.status(500).json({ error: safeErrorMsg(error.message) });
   }
@@ -1045,30 +1148,14 @@ app.get('/api/period-payments/:id/receipt', auth.requireAdminOrYonetici, async (
 // Makbuz PDF'ini buffer olarak oluştur (e-posta için)
 function generateReceiptPdfBuffer(payment) {
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fontPath = getPdfFontPath();
     if (fontPath) doc.font(fontPath);
     const chunks = [];
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    doc.fontSize(20).text('BESIKTAS FUTBOL OKULU', { align: 'center' });
-    doc.fontSize(16).text('ODEME MAKBUZU', { align: 'center' });
-    doc.moveDown(2);
-    doc.fontSize(12);
-    doc.text('Sporcu: ' + payment.ad + ' ' + payment.soyad);
-    doc.text('TC Kimlik No: ' + (payment.tcNo || '-'));
-    doc.moveDown();
-    doc.text('Odeme Tarihi: ' + (payment.odemeTarihi ? new Date(payment.odemeTarihi).toLocaleDateString('tr-TR') : '-'));
-    doc.text('Odeme Tipi: ' + (payment.odemeYontemi || '-'));
-    doc.moveDown();
-    doc.text('Odenen Donem: ' + payment.donemAdi);
-    doc.text('Donem Tarihleri: ' + new Date(payment.baslangicTarihi).toLocaleDateString('tr-TR') + ' - ' + new Date(payment.bitisTarihi).toLocaleDateString('tr-TR'));
-    doc.moveDown();
-    doc.fontSize(16).text('Toplam Tutar: ' + payment.tutar.toFixed(2) + ' TL', { align: 'right' });
-    doc.moveDown(2);
-    doc.fontSize(10).text('Makbuz No: ' + payment.id, { align: 'center' });
-    doc.text('Duzenlenme: ' + new Date().toLocaleDateString('tr-TR') + ' ' + new Date().toLocaleTimeString('tr-TR'), { align: 'center' });
+    renderReceiptContent(doc, payment);
     doc.end();
   });
 }
@@ -1173,8 +1260,22 @@ app.post('/api/period-payments/:id/send-receipt-email', auth.requireAdminOrYonet
   }
 });
 
-// Grup yoklama PDF
-app.get('/api/groups/attendance-pdf', auth.requireAdminOrYonetici, async (req, res) => {
+// Grup yoklama PDF - tablo çizgileri (sütun sınırları: Sıra|Ad Soyad|Doğum|Tarih1|Tarih2|Bilgi)
+const ATTENDANCE_COLS = [50, 80, 240, 330, 390, 450, 550];
+const ROW_HEIGHT = 18;
+
+function drawAttendanceTableGrid(doc, topY, rowCount) {
+  doc.strokeColor('#333333').lineWidth(0.5);
+  for (let r = 0; r <= rowCount; r++) {
+    const y = topY + r * ROW_HEIGHT;
+    doc.moveTo(ATTENDANCE_COLS[0], y).lineTo(ATTENDANCE_COLS[6], y).stroke();
+  }
+  for (const x of ATTENDANCE_COLS) {
+    doc.moveTo(x, topY).lineTo(x, topY + rowCount * ROW_HEIGHT).stroke();
+  }
+}
+
+app.get('/api/groups/attendance-pdf', auth.requireStaff, async (req, res) => {
   try {
     const { groupName, date, students } = req.query;
     if (!groupName || !date || !students) {
@@ -1183,10 +1284,8 @@ app.get('/api/groups/attendance-pdf', auth.requireAdminOrYonetici, async (req, r
     const studentIds = students.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id) && id > 0);
     if (studentIds.length === 0) return res.status(400).json({ error: 'Geçerli öğrenci ID\'leri gerekli' });
     
-    // Öğrenci bilgilerini al (bellek optimizasyonu - sadece istenen ID'ler)
     const studentList = await db.getStudentsByIds(studentIds);
     
-    // PDF oluştur
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const fontPath = getPdfFontPath();
     if (fontPath) doc.font(fontPath);
@@ -1196,108 +1295,88 @@ app.get('/api/groups/attendance-pdf', auth.requireAdminOrYonetici, async (req, r
     
     doc.pipe(res);
   
-    // Başlık
-    doc.fontSize(20).text('BESIKTAS FUTBOL OKULU', { align: 'center' });
-    doc.fontSize(16).text('YOKLAMA LISTESI', { align: 'center' });
+    doc.fontSize(20).text('BEŞİKTAŞ FUTBOL OKULU', { align: 'center' });
+    doc.fontSize(16).text('YOKLAMA LİSTESİ', { align: 'center' });
     doc.moveDown();
     
-    // Grup ve tarih bilgisi
     doc.fontSize(12);
     doc.text('Grup: ' + groupName);
-    doc.text('Toplam Ogrenci: ' + studentList.length);
+    doc.text('Tarih: ' + (date ? new Date(date).toLocaleDateString('tr-TR') : date));
+    doc.text('Toplam Öğrenci: ' + studentList.length);
     doc.moveDown();
     
-    // Tablo başlıkları
     doc.fontSize(10);
     const startY = doc.y;
     
-    // Başlıklar
-    doc.text('Sira', 50, startY, { width: 30 });
-    doc.text('Ad Soyad', 90, startY, { width: 150 });
-    doc.text('Dogum Tarihi', 250, startY, { width: 80 });
-    doc.text('Tarih 1>', 340, startY, { width: 50, align: 'center' });
-    doc.text('Tarih 2>', 400, startY, { width: 50, align: 'center' });
-    doc.text('Bilgi', 460, startY, { width: 90 });
+    doc.text('Sıra', 55, startY + 4, { width: 22 });
+    doc.text('Ad Soyad', 85, startY + 4, { width: 150 });
+    doc.text('Doğum Tarihi', 245, startY + 4, { width: 80 });
+    doc.text('Tarih', 335, startY + 4, { width: 50 });
+    doc.text('Tarih', 395, startY + 4, { width: 50 });
+    doc.text('Bilgi', 455, startY + 4, { width: 90 });
     
-    doc.moveTo(50, startY + 15).lineTo(550, startY + 15).stroke();
-    doc.moveDown();
+    const headerBottomY = startY + ROW_HEIGHT;
+    drawAttendanceTableGrid(doc, startY, 26);
     
-    // Öğrenci listesi
+    let currentY = headerBottomY;
+    
     studentList.forEach((student, index) => {
-      const y = doc.y;
-      
-      if (y > 700) {
+      if (currentY > 700) {
         doc.addPage();
-        doc.y = 50;
+        currentY = 50;
       }
-      
-      doc.text(`${index + 1}`, 50, doc.y, { width: 30 });
-      doc.text(`${student.ad} ${student.soyad}`, 90, y, { width: 150 });
-      doc.text(student.dogumTarihi ? new Date(student.dogumTarihi).toLocaleDateString('tr-TR') : '-', 250, y, { width: 80 });
-      doc.text('', 340, y, { width: 50, align: 'center' });
-      doc.text('', 400, y, { width: 50, align: 'center' });
-      doc.text('', 460, y, { width: 90 });
-      
-      doc.moveDown();
-      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown(0.5);
+      const rowY = currentY + 4;
+      doc.text(`${index + 1}`, 55, rowY, { width: 22 });
+      doc.text(`${student.ad} ${student.soyad}`, 85, rowY, { width: 150 });
+      doc.text(student.dogumTarihi ? new Date(student.dogumTarihi).toLocaleDateString('tr-TR') : '-', 245, rowY, { width: 80 });
+      doc.text('', 335, rowY, { width: 50 });
+      doc.text('', 395, rowY, { width: 50 });
+      doc.text('', 455, rowY, { width: 90 });
+      currentY += ROW_HEIGHT;
     });
     
-    // Kalan boş satırları ekle (toplam 25 satır olacak)
     const remainingRows = 25 - studentList.length;
     for (let i = 0; i < remainingRows; i++) {
-      const y = doc.y;
-      
-      if (y > 700) {
+      if (currentY > 700) {
         doc.addPage();
-        doc.y = 50;
+        currentY = 50;
       }
-      
-      doc.text(`${studentList.length + i + 1}`, 50, doc.y, { width: 30 });
-      doc.text('', 90, y, { width: 150 });
-      doc.text('', 250, y, { width: 80 });
-      doc.text('', 340, y, { width: 50 });
-      doc.text('', 400, y, { width: 50 });
-      doc.text('', 460, y, { width: 90 });
-      
-      doc.moveDown();
-      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown(0.5);
+      const rowY = currentY + 4;
+      doc.text(`${studentList.length + i + 1}`, 55, rowY, { width: 22 });
+      doc.text('', 85, rowY, { width: 150 });
+      doc.text('', 245, rowY, { width: 80 });
+      doc.text('', 335, rowY, { width: 50 });
+      doc.text('', 395, rowY, { width: 50 });
+      doc.text('', 455, rowY, { width: 90 });
+      currentY += ROW_HEIGHT;
     }
     
-    // Misafir Oyuncular Tablosu
     doc.moveDown(2);
-    doc.fontSize(14).text('MISAFIR OYUNCULAR', 50, doc.y, { width: 500, align: 'center' });
+    doc.fontSize(14).text('MİSAFİR OYUNCULAR', 50, doc.y, { width: 500, align: 'center' });
     doc.fontSize(10);
     doc.moveDown();
     
     const guestStartY = doc.y;
     
-    // Başlıklar
-    doc.text('Sira', 50, guestStartY, { width: 30 });
-    doc.text('Ad Soyad', 90, guestStartY, { width: 150 });
-    doc.text('Dogum Tarihi', 250, guestStartY, { width: 80 });
-    doc.text('Tarih 1>', 340, guestStartY, { width: 50, align: 'center' });
-    doc.text('Tarih 2>', 400, guestStartY, { width: 50, align: 'center' });
-    doc.text('Bilgi', 460, guestStartY, { width: 90 });
+    doc.text('Sıra', 55, guestStartY + 4, { width: 22 });
+    doc.text('Ad Soyad', 85, guestStartY + 4, { width: 150 });
+    doc.text('Doğum Tarihi', 245, guestStartY + 4, { width: 80 });
+    doc.text('Tarih', 335, guestStartY + 4, { width: 50 });
+    doc.text('Tarih', 395, guestStartY + 4, { width: 50 });
+    doc.text('Bilgi', 455, guestStartY + 4, { width: 90 });
     
-    doc.moveTo(50, guestStartY + 15).lineTo(550, guestStartY + 15).stroke();
-    doc.moveDown();
+    drawAttendanceTableGrid(doc, guestStartY, 6);
     
-    // 5 boş satır
+    let guestY = guestStartY + ROW_HEIGHT;
     for (let i = 0; i < 5; i++) {
-      const y = doc.y;
-      
-      doc.text(`${i + 1}`, 50, doc.y, { width: 30 });
-      doc.text('', 90, y, { width: 150 });
-      doc.text('', 250, y, { width: 80 });
-      doc.text('', 340, y, { width: 50 });
-      doc.text('', 400, y, { width: 50 });
-      doc.text('', 460, y, { width: 90 });
-      
-      doc.moveDown();
-      doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-      doc.moveDown(0.5);
+      const rowY = guestY + 4;
+      doc.text(`${i + 1}`, 55, rowY, { width: 22 });
+      doc.text('', 85, rowY, { width: 150 });
+      doc.text('', 245, rowY, { width: 80 });
+      doc.text('', 335, rowY, { width: 50 });
+      doc.text('', 395, rowY, { width: 50 });
+      doc.text('', 455, rowY, { width: 90 });
+      guestY += ROW_HEIGHT;
     }
     doc.end();
     
@@ -1309,7 +1388,7 @@ app.get('/api/groups/attendance-pdf', auth.requireAdminOrYonetici, async (req, r
 
 // ============ YOKLAMA API ============
 
-app.get('/api/attendance', auth.requireAdminOrYonetici, async (req, res) => {
+app.get('/api/attendance', auth.requireStaff, async (req, res) => {
   try {
     const groupId = safeQueryId(req.query.groupId);
     const date = req.query.date;
@@ -1323,7 +1402,7 @@ app.get('/api/attendance', auth.requireAdminOrYonetici, async (req, res) => {
   }
 });
 
-app.post('/api/attendance', auth.requireAdminOrYonetici, async (req, res) => {
+app.post('/api/attendance', auth.requireStaff, async (req, res) => {
   try {
     const { groupId, date, instructorId, entries } = req.body;
     if (!groupId || !date || !Array.isArray(entries)) {
@@ -1341,15 +1420,16 @@ app.post('/api/attendance', auth.requireAdminOrYonetici, async (req, res) => {
   }
 });
 
-// Yoklama raporu
+// Yoklama raporu (şube izolasyonu: yönetici sadece kendi şubesini görür)
 app.get('/api/reports/attendance', auth.requireAdminOrYonetici, async (req, res) => {
   try {
     const { start, end, subeId, groupId } = req.query;
     if (!start || !end) {
       return res.status(400).json({ error: 'start ve end gerekli' });
     }
+    const effectiveSubeId = req.effectiveSubeId ?? safeQueryId(subeId);
     const result = await db.getAttendanceReport(
-      subeId ? parseInt(subeId) : null,
+      effectiveSubeId,
       start,
       end,
       groupId ? parseInt(groupId) : null
@@ -1366,8 +1446,9 @@ app.get('/api/reports/attendance-monthly', auth.requireAdminOrYonetici, async (r
     if (!start || !end) {
       return res.status(400).json({ error: 'start ve end gerekli' });
     }
+    const effectiveSubeId = req.effectiveSubeId ?? safeQueryId(subeId);
     const rows = await db.getAttendanceMonthlyTrend(
-      subeId ? parseInt(subeId) : null,
+      effectiveSubeId,
       start,
       end,
       groupId ? parseInt(groupId) : null
@@ -1491,6 +1572,24 @@ app.get('/api/parent/:parentUserId/students', auth.requireOwnParent, async (req,
     }
     const parentStudents = await db.getStudentsByParentUserId(parentUserId);
     res.json(parentStudents);
+  } catch (error) {
+    res.status(500).json({ error: safeErrorMsg(error.message) });
+  }
+});
+
+// Velinin öğrencisinin yoklama özeti (devamsızlık/devamlılık)
+app.get('/api/parent/:parentUserId/students/:studentId/attendance', auth.requireOwnParent, async (req, res) => {
+  try {
+    const parentUserId = safeParseId(req.params.parentUserId);
+    const studentId = safeParseId(req.params.studentId);
+    if (!parentUserId || !studentId) return res.status(400).json({ error: 'Geçersiz ID' });
+    const studentIds = await db.getParentStudentIds(parentUserId);
+    if (!studentIds.includes(studentId)) {
+      return res.status(403).json({ error: 'Yetkisiz erişim' });
+    }
+    const days = parseInt(req.query.days, 10) || 60;
+    const data = await db.getStudentAttendance(studentId, days);
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: safeErrorMsg(error.message) });
   }
@@ -1663,15 +1762,20 @@ app.get('/api/reports/student-period-stats', auth.requireAdminOrYonetici, async 
   }
 });
 
-// Antrenör raporu
-app.get('/api/reports/instructor', auth.requireAdminOrYonetici, async (req, res) => {
+// Antrenör raporu (antrenör kendi istatistiklerini, admin/yönetici tüm antrenörleri görebilir)
+app.get('/api/reports/instructor', auth.requireStaff, async (req, res) => {
   try {
     const range = req.query.range || 'periods';
     const count = Math.max(1, safeParseId(req.query.count) || 1);
-    const instructorId = safeQueryId(req.query.instructorId);
+    let instructorId = safeQueryId(req.query.instructorId);
 
     if (!instructorId) {
       return res.status(400).json({ error: 'instructorId gerekli' });
+    }
+    if (req.user.rol === 'antrenor') {
+      if (parseInt(instructorId, 10) !== req.user.id) {
+        return res.status(403).json({ error: 'Sadece kendi istatistiklerinizi görüntüleyebilirsiniz' });
+      }
     }
     if (req.effectiveSubeId) {
       const instructor = await db.getUserById(instructorId);
@@ -1688,7 +1792,7 @@ app.get('/api/reports/instructor', auth.requireAdminOrYonetici, async (req, res)
       startDate = new Date();
       startDate.setFullYear(endDate.getFullYear() - 1);
     } else {
-      const subeId = req.effectiveSubeId ?? null;
+      const subeId = req.effectiveSubeId ?? (req.user.rol === 'antrenor' ? req.user.subeId : null) ?? null;
       const periods = await db.getAllPeriods(subeId);
       const sorted = [...periods].sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi));
       const selected = sorted.slice(0, Math.max(1, count));

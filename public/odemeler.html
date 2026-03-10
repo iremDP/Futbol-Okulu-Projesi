@@ -593,31 +593,25 @@
         let allPayments = [];
         let allPeriods = [];
         let selectedSubeId = null;
-
-        // Menü ortak dosyadan yüklenir
+        const PAGE_SIZE = 50;
+        let searchDebounceTimer = null;
+        let currentUser = null;
 
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
+            currentUser = JSON.parse(user);
+            document.getElementById('currentUserName').textContent = currentUser.adSoyad;
             
-            const userData = JSON.parse(user);
-            document.getElementById('currentUserName').textContent = userData.adSoyad;
-            
-            if (!['admin', 'yonetici'].includes(userData.rol)) {
+            if (!['admin', 'yonetici'].includes(currentUser.rol)) {
                 alert('Bu sayfaya erişim yetkiniz yok!');
                 window.location.href = 'index.html';
             }
         })();
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
 
         function showMessage(text, type = 'success') {
             const msg = document.getElementById('messageDiv');
@@ -626,6 +620,36 @@
             setTimeout(() => {
                 msg.className = 'message';
             }, 3000);
+        }
+
+        async function loadPaymentsList(subeId, periodId, q = '') {
+            try {
+                const periodFilter = document.getElementById('filterPeriodBorclu')?.value || document.getElementById('filterPeriodOdenen')?.value || '';
+                const effectivePeriodId = periodId || (periodFilter ? parseInt(periodFilter, 10) : null);
+                let url = `${API_URL}/period-payments?limit=${PAGE_SIZE}&offset=0`;
+                if (subeId) url += `&subeId=${subeId}`;
+                if (effectivePeriodId) url += `&periodId=${effectivePeriodId}`;
+                if (q) url += `&q=${encodeURIComponent(q)}`;
+                const [borcluRes, odenenRes] = await Promise.all([
+                    fetch(url + '&odemeDurumu=Borçlu'),
+                    fetch(url + '&odemeDurumu=Ödendi')
+                ]);
+                const borcluData = await borcluRes.json();
+                const odenenData = await odenenRes.json();
+                if (borcluData?.error || odenenData?.error) {
+                    console.error('Ödemeler API hatası:', borcluData?.error || odenenData?.error);
+                }
+                const borcluRows = Array.isArray(borcluData) ? borcluData : (borcluData?.rows || []);
+                const odenenRows = Array.isArray(odenenData) ? odenenData : (odenenData?.rows || []);
+                allPayments = borcluRows.concat(odenenRows);
+                displayBorclu(borcluRows);
+                displayOdenen(odenenRows);
+            } catch (e) {
+                console.error('Ödemeler yüklenemedi:', e);
+                allPayments = [];
+                displayBorclu([]);
+                displayOdenen([]);
+            }
         }
 
         function switchTab(tab) {
@@ -674,6 +698,12 @@
             if (selectOdenen) {
                 selectOdenen.addEventListener('change', () => onChange(selectOdenen.value));
             }
+            // Admin için: şube seçilmemişse ilk şubeyi otomatik seç (veri yüklenebilsin)
+            if (Array.isArray(subeler) && subeler.length > 0 && selectedSubeId == null) {
+                selectedSubeId = subeler[0].id;
+                if (selectBorclu) selectBorclu.value = selectedSubeId;
+                if (selectOdenen) selectOdenen.value = selectedSubeId;
+            }
         }
 
         async function loadData() {
@@ -685,11 +715,16 @@
                 const periodsUrl = periodsSubeIdParam ? `${API_URL}/periods?subeId=${periodsSubeIdParam}` : `${API_URL}/periods`;
                 const periodsResponse = await fetch(periodsUrl);
                 let periodsData = await periodsResponse.json();
+                if (periodsData?.error) {
+                    showMessage('Dönemler yüklenemedi: ' + periodsData.error, 'error');
+                    return;
+                }
+                if (!Array.isArray(periodsData)) periodsData = [];
                 
-                // Yönetici için ek güvenlik: sadece kendi şubesinin dönemlerini göster (istatistik/dönem filtrelerinde)
+                // Yönetici için: kendi şubesi + subeId null (global) dönemler
                 const periodsSubeId = currentUser.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
                 if (currentUser.rol === 'yonetici' && currentUser.subeId) {
-                    periodsData = periodsData.filter(p => p.subeId == currentUser.subeId);
+                    periodsData = (periodsData || []).filter(p => !p.subeId || p.subeId == currentUser.subeId);
                 }
                 allPeriods = periodsData;
                 
@@ -697,21 +732,13 @@
                 const filterBorclu = document.getElementById('filterPeriodBorclu');
                 const filterOdenen = document.getElementById('filterPeriodOdenen');
                 
+                // Yönetici: API zaten subeId ile filtreledi; subeId null dönemleri de dahil et (eski/global dönemler)
                 const filteredPeriods = periodsSubeId
-                    ? allPeriods.filter(p => p.subeId == periodsSubeId)
+                    ? allPeriods.filter(p => !p.subeId || p.subeId == periodsSubeId)
                     : allPeriods;
                 const periodOptions = filteredPeriods.map(p => `<option value="${p.id}">${esc(p.donemAdi)}</option>`).join('');
                 filterBorclu.innerHTML = '<option value="">Tüm Dönemler</option>' + periodOptions;
                 filterOdenen.innerHTML = '<option value="">Tüm Dönemler</option>' + periodOptions;
-                
-                // Ödemeleri yükle (şubeye göre filtrele)
-                let paymentsUrl = `${API_URL}/period-payments`;
-                const paymentsSubeId = currentUser.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
-                if (paymentsSubeId) {
-                    paymentsUrl += `?subeId=${paymentsSubeId}`;
-                }
-                const paymentsResponse = await fetch(paymentsUrl);
-                allPayments = await paymentsResponse.json();
                 
                 // EN SON AKTİF DÖNEMİ BUL (sadece kendi şube dönemleri)
                 const activePeriodsOnly = filteredPeriods.filter(p => p.durum === 'Aktif');
@@ -719,29 +746,65 @@
                     ? activePeriodsOnly.sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi))[0]
                     : null;
                 
-                // Sadece en son aktif döneme ait ödemeleri filtrele
-                const filteredPaymentsForStats = latestActivePeriod 
-                    ? allPayments.filter(p => p.periodId === latestActivePeriod.id)
-                    : [];
+                const paymentsSubeId = currentUser.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
                 
-                updateStats(filteredPaymentsForStats, latestActivePeriod);
+                // İstatistikleri her zaman yükle (dönem seçili olsun veya olmasın)
+                const statsPeriodId = latestActivePeriod?.id || null;
+                const statsUrl = `${API_URL}/period-payments/stats?subeId=${paymentsSubeId || ''}` + (statsPeriodId ? `&periodId=${statsPeriodId}` : '');
+                const statsRes = await fetch(statsUrl);
+                const apiStats = await statsRes.json();
+                if (!statsRes.ok || apiStats.error) {
+                    console.error('Stats API hatası:', apiStats?.error || statsRes.status);
+                    showMessage('İstatistikler yüklenemedi: ' + (apiStats?.error || statsRes.status), 'error');
+                }
+                document.getElementById('totalBorclu').textContent = apiStats.borcluSayisi ?? 0;
+                document.getElementById('totalOdenen').textContent = apiStats.odenenSayisi ?? 0;
+                document.getElementById('totalBorcluTutar').textContent = (apiStats.totalBorclu ?? 0).toFixed(2) + ' TL';
+                document.getElementById('totalOdenenTutar').textContent = (apiStats.totalOdenen ?? 0).toFixed(2) + ' TL';
                 
-                // Dönem selector'ı doldur (sadece kendi şube dönemleri)
+                // Ödemeleri limit ile yükle (arama/sayfalama)
+                await loadPaymentsList(paymentsSubeId, latestActivePeriod?.id);
+                
+                // Dönem selector'ı doldur - TÜM dönemleri göster (Aktif yoksa da seçenek olsun)
                 const periodSelector = document.getElementById('periodSelector');
-                periodSelector.innerHTML = filteredPeriods
-                    .filter(p => p.durum === 'Aktif')
-                    .sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi))
-                    .map(p => `<option value="${p.id}" ${p.id === latestActivePeriod?.id ? 'selected' : ''}>${esc(p.donemAdi)} (${new Date(p.baslangicTarihi).toLocaleDateString('tr-TR')})</option>`)
+                const sortedPeriods = [...filteredPeriods].sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi));
+                const defaultPeriod = latestActivePeriod || sortedPeriods[0];
+                const hasPeriods = sortedPeriods.length > 0;
+                periodSelector.innerHTML = '<option value="">Tüm Dönemler</option>' + sortedPeriods
+                    .map(p => `<option value="${p.id}" ${p.id === defaultPeriod?.id ? 'selected' : ''}>${esc(p.donemAdi)} (${new Date(p.baslangicTarihi).toLocaleDateString('tr-TR')}) - ${esc(p.durum || '')}</option>`)
                     .join('');
+                periodSelector.disabled = false;
+                if (!hasPeriods) {
+                    periodSelector.value = '';
+                    periodSelector.title = 'Bu şube için henüz dönem tanımlanmamış. Dönemler sayfasından dönem ekleyin.';
+                }
                 
-                // Dönem değişince istatistikleri güncelle
-                periodSelector.onchange = function() {
-                    const selectedPeriodId = parseInt(this.value);
-                    if (selectedPeriodId) {
-                        const selectedPeriod = allPeriods.find(p => p.id === selectedPeriodId);
-                        const filteredPayments = allPayments.filter(p => p.periodId === selectedPeriodId);
-                        updateStats(filteredPayments, selectedPeriod);
+                // Dönem değişince istatistikleri güncelle (API'den; updateStats çağırma - sayfa verisi sınırlı)
+                periodSelector.onchange = async function() {
+                    const val = this.value;
+                    const selectedPeriodId = val ? parseInt(val, 10) : null;
+                    const selectedPeriod = selectedPeriodId ? allPeriods.find(p => p.id === selectedPeriodId) : null;
+                    const subeId = currentUser?.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+                    const statsUrl = `${API_URL}/period-payments/stats?subeId=${subeId || ''}` + (selectedPeriodId ? `&periodId=${selectedPeriodId}` : '');
+                    const statsRes = await fetch(statsUrl);
+                    const apiStats = await statsRes.json();
+                    document.getElementById('totalBorclu').textContent = apiStats.borcluSayisi ?? 0;
+                    document.getElementById('totalOdenen').textContent = apiStats.odenenSayisi ?? 0;
+                    document.getElementById('totalBorcluTutar').textContent = (apiStats.totalBorclu ?? 0).toFixed(2) + ' TL';
+                    document.getElementById('totalOdenenTutar').textContent = (apiStats.totalOdenen ?? 0).toFixed(2) + ' TL';
+                    if (selectedPeriod) {
+                        const statsCards = document.querySelector('.stats-cards');
+                        let existingInfo = document.getElementById('periodInfo');
+                        if (existingInfo) existingInfo.remove();
+                        const periodInfo = document.createElement('div');
+                        periodInfo.id = 'periodInfo';
+                        periodInfo.style.cssText = 'grid-column: 1/-1; background: #667eea; color: white; padding: 15px; border-radius: 10px; text-align: center; font-weight: 600;';
+                        periodInfo.innerHTML = `📅 Görüntülenen Dönem: ${esc(selectedPeriod.donemAdi)} (${new Date(selectedPeriod.baslangicTarihi).toLocaleDateString('tr-TR')} - ${new Date(selectedPeriod.bitisTarihi).toLocaleDateString('tr-TR')})`;
+                        statsCards.appendChild(periodInfo);
                     }
+                    await loadPaymentsList(subeId, selectedPeriodId);
+                    filterBorclu();
+                    filterOdenen();
                 };
                 
                 displayBorclu(allPayments.filter(p => p.odemeDurumu === 'Borçlu'));
@@ -780,29 +843,29 @@
             }
         }
 
-        document.getElementById('searchBorclu').addEventListener('input', filterBorclu);
-        document.getElementById('filterPeriodBorclu').addEventListener('change', filterBorclu);
+        document.getElementById('searchBorclu').addEventListener('input', function() {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                const q = document.getElementById('searchBorclu').value.trim();
+                const subeId = currentUser?.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+                loadPaymentsList(subeId, null, q).then(() => filterBorclu());
+            }, 350);
+        });
+        document.getElementById('filterPeriodBorclu').addEventListener('change', function() {
+            const subeId = currentUser?.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+            loadPaymentsList(subeId).then(() => filterBorclu());
+        });
         document.getElementById('subeFilterBorclu')?.addEventListener('change', filterBorclu);
 
         function filterBorclu() {
-            const searchTerm = document.getElementById('searchBorclu').value.toLowerCase();
             const periodFilter = document.getElementById('filterPeriodBorclu').value;
             const subeFilter = document.getElementById('subeFilterBorclu')?.value || '';
-            
-            let filtered = allPayments.filter(p => {
+            let filtered = (allPayments || []).filter(p => {
                 if (p.odemeDurumu !== 'Borçlu') return false;
-                
-                const matchesSearch = 
-                    p.ad.toLowerCase().includes(searchTerm) ||
-                    p.soyad.toLowerCase().includes(searchTerm) ||
-                    p.donemAdi.toLowerCase().includes(searchTerm);
-                
                 const matchesPeriod = !periodFilter || p.periodId == periodFilter;
-                
                 const matchesSube = !subeFilter || String(p.subeId || '') === subeFilter;
-                return matchesSearch && matchesPeriod && matchesSube;
+                return matchesPeriod && matchesSube;
             });
-            
             displayBorclu(filtered);
         }
 
@@ -834,27 +897,29 @@
             `).join('');
         }
 
-        document.getElementById('searchOdenen').addEventListener('input', filterOdenen);
-        document.getElementById('filterPeriodOdenen').addEventListener('change', filterOdenen);
+        document.getElementById('searchOdenen').addEventListener('input', function() {
+            clearTimeout(searchDebounceTimer);
+            searchDebounceTimer = setTimeout(() => {
+                const q = document.getElementById('searchOdenen').value.trim();
+                const subeId = currentUser?.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+                loadPaymentsList(subeId, null, q).then(() => filterOdenen());
+            }, 350);
+        });
+        document.getElementById('filterPeriodOdenen').addEventListener('change', function() {
+            const subeId = currentUser?.rol === 'yonetici' ? currentUser.subeId : selectedSubeId;
+            loadPaymentsList(subeId).then(() => filterOdenen());
+        });
         document.getElementById('subeFilterOdenen')?.addEventListener('change', filterOdenen);
 
         function filterOdenen() {
-            const searchTerm = document.getElementById('searchOdenen').value.toLowerCase();
             const periodFilter = document.getElementById('filterPeriodOdenen').value;
             const subeFilter = document.getElementById('subeFilterOdenen')?.value || '';
-            
-            let filtered = allPayments.filter(p => {
+
+            let filtered = (allPayments || []).filter(p => {
                 if (p.odemeDurumu !== 'Ödendi') return false;
-                
-                const matchesSearch = 
-                    p.ad.toLowerCase().includes(searchTerm) ||
-                    p.soyad.toLowerCase().includes(searchTerm) ||
-                    p.donemAdi.toLowerCase().includes(searchTerm);
-                
                 const matchesPeriod = !periodFilter || p.periodId == periodFilter;
-                
                 const matchesSube = !subeFilter || String(p.subeId || '') === subeFilter;
-                return matchesSearch && matchesPeriod && matchesSube;
+                return matchesPeriod && matchesSube;
             });
             
             displayOdenen(filtered);
@@ -1049,9 +1114,11 @@
             }
         }
 
-        // Sayfa yüklendiğinde
-        loadSubeFilter();
-        loadData();
+        // Sayfa yüklendiğinde - önce şube filtresi (admin için), sonra veriler
+        (async function init() {
+            await loadSubeFilter();
+            loadData();
+        })();
     </script>
 </body>
 </html>

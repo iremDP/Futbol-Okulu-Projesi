@@ -186,8 +186,7 @@
 
         function checkIfLoggedIn() {
             const user = localStorage.getItem('currentUser');
-            const token = localStorage.getItem('token');
-            if (user && token) {
+            if (user) {
                 redirectToHome(JSON.parse(user));
             }
         }
@@ -203,6 +202,7 @@
                 const response = await fetch(`${API_URL}/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({ kullaniciAdi: username, sifre: password })
                 });
 
@@ -215,11 +215,10 @@
                 }
                 if (response.ok) {
                     const user = data.user;
-                    if (!user || !data.token) {
+                    if (!user) {
                         showError('Giriş yanıtı eksik.');
                         return;
                     }
-                    localStorage.setItem('token', data.token);
                     localStorage.setItem('currentUser', JSON.stringify(user));
                     if (data.mustChangePassword) {
                         localStorage.setItem('mustChangePassword', '1');

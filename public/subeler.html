@@ -275,7 +275,7 @@
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -429,11 +429,6 @@
             setTimeout(() => el.style.display = 'none', 3000);
         }
 
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
     </script>
 </body>
 </html>

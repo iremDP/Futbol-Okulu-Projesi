@@ -354,7 +354,7 @@
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -367,12 +367,6 @@
                 window.location.href = 'index.html';
             }
         })();
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
 
         function showMessage(text, type = 'success') {
             const msg = document.getElementById('messageDiv');

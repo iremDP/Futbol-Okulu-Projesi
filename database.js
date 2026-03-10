@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const db = new Database('futbol-okulu.db');
@@ -93,12 +95,7 @@ db.exec(`
   )
 `);
 
-// Varsayılan admin kullanıcısı ekle (şifre hash'li - ilk girişte değiştirin!)
-const adminHash = bcrypt.hashSync('admin123', 10);
-db.prepare(`
-  INSERT OR IGNORE INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, aktif, olusturmaTarihi)
-  VALUES ('admin', ?, 'admin', 'Sistem Yöneticisi', '', 1, datetime('now'))
-`).run(adminHash);
+// Admin kullanıcısı - ensureAdminUser() ile settings sonrası oluşturulacak
 // Ödemeler tablosu
 db.exec(`
   CREATE TABLE IF NOT EXISTS payments (
@@ -320,6 +317,30 @@ db.exec(`
   INSERT OR IGNORE INTO settings (anahtar, deger) VALUES ('donemSuresi', '28');
 `);
 
+// Admin kullanıcısı - ilk kurulumda rastgele şifre üret (güvenlik)
+function ensureAdminUser() {
+  const adminExists = db.prepare("SELECT id, sifre FROM users WHERE kullaniciAdi = 'admin'").get();
+  if (adminExists) {
+    // Mevcut DB: admin123 ile girişte şifre değiştirme zorunlu (migration)
+    const hasInitialFlag = db.prepare("SELECT deger FROM settings WHERE anahtar = 'admin_initial_password_hash'").get();
+    if (!hasInitialFlag) {
+      db.prepare("INSERT OR REPLACE INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', ?)").run(adminExists.sifre);
+    }
+    return;
+  }
+  const randomPw = crypto.randomBytes(12).toString('base64url');
+  const adminHash = bcrypt.hashSync(randomPw, 10);
+  db.prepare(`
+    INSERT INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, aktif, olusturmaTarihi)
+    VALUES ('admin', ?, 'admin', 'Sistem Yöneticisi', '', 1, datetime('now'))
+  `).run(adminHash);
+  db.prepare("INSERT OR REPLACE INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', ?)").run(adminHash);
+  const credPath = path.join(__dirname, 'admin-initial-credentials.txt');
+  fs.writeFileSync(credPath, `Futbol Okulu - İlk Giriş Bilgileri\n${'='.repeat(40)}\nKullanıcı: admin\nŞifre: ${randomPw}\n\n⚠️ İlk girişte şifreyi değiştirin ve bu dosyayı silin!\n`);
+  console.log('⚠️ Admin oluşturuldu. Şifre: admin-initial-credentials.txt');
+}
+ensureAdminUser();
+
 // Düz metin şifreleri hash'e çevir (mevcut veritabanları için)
 migratePasswordsToHash();
 
@@ -335,6 +356,29 @@ function getAllStudents(subeId = null) {
     const stmt = db.prepare(query + ' ORDER BY id DESC');
     return stmt.all();
   }
+}
+
+function searchStudents(subeId = null, opts = {}) {
+  const { q = '', limit = 50, offset = 0, durum } = opts;
+  const searchTerm = (q || '').trim();
+  let where = [];
+  const params = [];
+  if (subeId) { where.push('subeId = ?'); params.push(subeId); }
+  if (durum === 'Aktif') { where.push("durum = 'Aktif'"); }
+  else if (durum === 'Pasif') { where.push("durum != 'Aktif'"); }
+  if (searchTerm) {
+    const like = '%' + searchTerm.replace(/[%_]/g, '') + '%';
+    where.push('(ad LIKE ? OR soyad LIKE ? OR veliAdi LIKE ? OR veliTelefon1 LIKE ? OR email LIKE ? OR tcNo LIKE ?)');
+    params.push(like, like, like, like, like, like);
+  }
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const countStmt = db.prepare('SELECT COUNT(*) as c FROM students ' + whereClause);
+  const total = countStmt.get(...params).c;
+  const limitVal = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+  const offsetVal = Math.max(0, parseInt(offset, 10) || 0);
+  const stmt = db.prepare('SELECT * FROM students ' + whereClause + ' ORDER BY id DESC LIMIT ? OFFSET ?');
+  const rows = stmt.all(...params, limitVal, offsetVal);
+  return { rows, total };
 }
 
 function getStudentById(id) {
@@ -474,11 +518,13 @@ function createProportionalDebtsForNewStudent(studentId, kayitTarihi) {
         return;
       }
       
-      // Orantılı hesaplama
-      const toplamGun = Math.ceil((bitisDate - baslangicDate) / (1000 * 60 * 60 * 24));
-      const kalanGun = Math.ceil((bitisDate - kayitDate) / (1000 * 60 * 60 * 24)) + 1; // +1 kayıt gününü dahil et
-      
-      const orantiliTutar = (period.tutar * kalanGun) / toplamGun;
+      // Orantılı hesaplama: Dönem haftalara bölünür, kalan hafta sayısına göre tutar hesaplanır
+      // Örn: 9 Mar-6 Nisan (4 hafta), 4400 TL → hafta1: 4400, hafta2: 3300, hafta3: 2200, hafta4: 1100
+      const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+      const toplamHafta = Math.max(1, Math.ceil((bitisDate - baslangicDate) / MS_PER_WEEK));
+      const kalanHafta = Math.ceil((bitisDate - kayitDate) / MS_PER_WEEK);
+      const kalanHaftaClamped = Math.min(toplamHafta, Math.max(1, kalanHafta));
+      const orantiliTutar = (period.tutar * kalanHaftaClamped) / toplamHafta;
       
       // Borç oluştur
       const stmt = db.prepare(`
@@ -581,6 +627,27 @@ function getAllUsers(subeId = null) {
   }
 }
 
+function searchUsers(subeId = null, opts = {}) {
+  const { q = '', limit = 50, offset = 0 } = opts;
+  const searchTerm = (q || '').trim();
+  let where = [];
+  const params = [];
+  if (subeId) { where.push('subeId = ?'); params.push(subeId); }
+  if (searchTerm) {
+    const like = '%' + searchTerm.replace(/[%_]/g, '') + '%';
+    where.push('(kullaniciAdi LIKE ? OR adSoyad LIKE ? OR telefon LIKE ? OR email LIKE ?)');
+    params.push(like, like, like, like);
+  }
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const countStmt = db.prepare('SELECT COUNT(*) as c FROM users ' + whereClause);
+  const total = countStmt.get(...params).c;
+  const limitVal = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+  const offsetVal = Math.max(0, parseInt(offset, 10) || 0);
+  const stmt = db.prepare('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, aktif, olusturmaTarihi FROM users ' + whereClause + ' ORDER BY id DESC LIMIT ? OFFSET ?');
+  const rows = stmt.all(...params, limitVal, offsetVal);
+  return { rows, total };
+}
+
 function getUserById(id) {
   const stmt = db.prepare('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, studentId, subeId, aktif, olusturmaTarihi FROM users WHERE id = ?');
   return stmt.get(id);
@@ -598,6 +665,7 @@ function createUser(user) {
 }
 
 function updateUser(id, user) {
+  const existing = db.prepare('SELECT kullaniciAdi FROM users WHERE id = ?').get(id);
   if (user.sifre) {
     const hashedSifre = bcrypt.hashSync(user.sifre, 10);
     const stmt = db.prepare(`
@@ -607,6 +675,9 @@ function updateUser(id, user) {
       WHERE id = @id
     `);
     stmt.run({ id, ...user, sifre: hashedSifre });
+    if (existing && existing.kullaniciAdi === 'admin') {
+      db.prepare("DELETE FROM settings WHERE anahtar = 'admin_initial_password_hash'").run();
+    }
   } else {
     const stmt = db.prepare(`
       UPDATE users 
@@ -965,6 +1036,41 @@ function getAllStudentPeriodPayments(subeId = null) {
     const stmt = db.prepare(query + ' ORDER BY pp.baslangicTarihi DESC, s.ad');
     return stmt.all();
   }
+}
+
+function searchStudentPeriodPayments(subeId = null, opts = {}) {
+  const { q = '', limit = 50, offset = 0, periodId, odemeDurumu } = opts;
+  const searchTerm = (q || '').trim();
+  let where = [];
+  const params = [];
+  if (subeId) { where.push('s.subeId = ? AND pp.subeId = ?'); params.push(subeId, subeId); }
+  if (periodId) { where.push('pp.id = ?'); params.push(periodId); }
+  if (odemeDurumu) { where.push('spp.odemeDurumu = ?'); params.push(odemeDurumu); }
+  if (searchTerm) {
+    const like = '%' + searchTerm.replace(/[%_]/g, '') + '%';
+    where.push('(s.ad LIKE ? OR s.soyad LIKE ? OR s.veliAdi LIKE ?)');
+    params.push(like, like, like);
+  }
+  const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const baseQuery = `
+    FROM student_period_payments spp
+    JOIN students s ON spp.studentId = s.id
+    JOIN payment_periods pp ON spp.periodId = pp.id
+    ${whereClause}
+  `;
+  const countStmt = db.prepare('SELECT COUNT(*) as c ' + baseQuery);
+  const total = countStmt.get(...params).c;
+  const limitVal = Math.min(Math.max(1, parseInt(limit, 10) || 50), 500);
+  const offsetVal = Math.max(0, parseInt(offset, 10) || 0);
+  const stmt = db.prepare(`
+    SELECT spp.*, s.ad, s.soyad, s.subeId, s.kayitTarihi, s.ayrilmaTarihi,
+      (SELECT MAX(h.degisimTarihi) FROM student_status_history h WHERE h.studentId = s.id AND h.yeniDurum = 'Aktif') AS sonAktifTarihi,
+      pp.donemAdi, pp.baslangicTarihi, pp.bitisTarihi, pp.subeId AS periodSubeId
+    ${baseQuery}
+    ORDER BY pp.baslangicTarihi DESC, s.ad LIMIT ? OFFSET ?
+  `);
+  const rows = stmt.all(...params, limitVal, offsetVal);
+  return { rows, total };
 }
 
 // Ödeme yap
@@ -1336,6 +1442,25 @@ function saveAttendance({ groupId, date, instructorId, entries }) {
   return transaction();
 }
 
+/** Öğrencinin yoklama kayıtlarını getir (veli için - son 60 gün) */
+function getStudentAttendance(studentId, days = 60) {
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  const startStr = startDate.toISOString().split('T')[0];
+  const rows = db.prepare(`
+    SELECT ae.status, s.date, g.groupName
+    FROM attendance_entries ae
+    JOIN attendance_sessions s ON ae.sessionId = s.id
+    JOIN groups g ON s.groupId = g.id
+    WHERE ae.studentId = ? AND s.date >= ?
+    ORDER BY s.date DESC
+    LIMIT 100
+  `).all(studentId, startStr);
+  const present = rows.filter(r => r.status === 'Var').length;
+  const absent = rows.filter(r => r.status === 'Yok').length;
+  return { rows, present, absent, total: rows.length };
+}
+
 function getAttendanceReport(subeId = null, startDate, endDate, groupId = null) {
   const params = [startDate, endDate];
   let groupWhere = 'WHERE s.date BETWEEN ? AND ?';
@@ -1654,14 +1779,34 @@ function getReportSummary(subeId, startDate, endDate) {
   const start = new Date(startDate);
   const end = new Date(endDate);
 
+  function parseBirthDate(val) {
+    if (!val) return null;
+    const str = String(val).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(str) || str.includes('-') || str.includes('/')) {
+      const d = new Date(str);
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const num = parseFloat(str);
+    if (!isNaN(num) && num >= 1 && num < 100000 && !str.includes('-') && !str.includes('/')) {
+      return new Date(Math.round((num - 25569) * 86400 * 1000));
+    }
+    const d = new Date(str);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
   students.forEach(s => {
     if (s.dogumTarihi) {
-      const birth = new Date(s.dogumTarihi);
-      const now = new Date();
-      let age = now.getFullYear() - birth.getFullYear();
-      const m = now.getMonth() - birth.getMonth();
-      if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age -= 1;
-      ageStats[age] = (ageStats[age] || 0) + 1;
+      const birth = parseBirthDate(s.dogumTarihi);
+      if (birth) {
+        const now = new Date();
+        let age = now.getFullYear() - birth.getFullYear();
+        const m = now.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age -= 1;
+        if (age < 0 || age > 120) age = '-';
+        ageStats[age] = (ageStats[age] || 0) + 1;
+      } else {
+        ageStats['-'] = (ageStats['-'] || 0) + 1;
+      }
     } else {
       ageStats['-'] = (ageStats['-'] || 0) + 1;
     }
@@ -1871,11 +2016,13 @@ function createProportionalDebtsForReturningStudent(studentId, dönüsTarihi) {
       
       let orantiliTutar = period.tutar;
       
-      // Eğer dönüş tarihi dönem içindeyse orantılı hesapla
+      // Eğer dönüş tarihi dönem içindeyse hafta bazlı orantılı hesapla
       if (donusDate > baslangicDate) {
-        const toplamGun = Math.ceil((bitisDate - baslangicDate) / (1000 * 60 * 60 * 24));
-        const kalanGun = Math.ceil((bitisDate - donusDate) / (1000 * 60 * 60 * 24)) + 1;
-        orantiliTutar = (period.tutar * kalanGun) / toplamGun;
+        const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+        const toplamHafta = Math.max(1, Math.ceil((bitisDate - baslangicDate) / MS_PER_WEEK));
+        const kalanHafta = Math.ceil((bitisDate - donusDate) / MS_PER_WEEK);
+        const kalanHaftaClamped = Math.min(toplamHafta, Math.max(1, kalanHafta));
+        orantiliTutar = (period.tutar * kalanHaftaClamped) / toplamHafta;
       }
       
       // Borç oluştur
@@ -1913,6 +2060,7 @@ module.exports = {
   transferStudentsToGroup,
   deleteGroup,
   getAllStudents,
+  searchStudents,
   getStudentById,
   getStudentsByIds,
   getParentStudentIds,
@@ -1925,6 +2073,7 @@ module.exports = {
   getActiveStudents,
   getInactiveStudents,
   getAllUsers,
+  searchUsers,
   getUserById,
   createUser,
   updateUser,
@@ -1948,6 +2097,7 @@ module.exports = {
   getPeriodPaymentStats,
   getStudentPeriodPayments,
   getAllStudentPeriodPayments,
+  searchStudentPeriodPayments,
   makePayment,
   getPaymentReceipt,
   updatePayment,
@@ -1966,6 +2116,7 @@ module.exports = {
   getAttendanceSession,
   getAttendanceEntries,
   saveAttendance,
+  getStudentAttendance,
   getAttendanceReport,
   getAttendanceMonthlyTrend,
   createTestSession,

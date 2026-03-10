@@ -137,6 +137,56 @@
             color: #28a745;
         }
 
+        .attendance-summary {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .attendance-detail-list {
+            max-height: 240px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+
+        .attendance-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 10px;
+            margin-bottom: 4px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .attendance-row.present {
+            background: #e8f5e9;
+        }
+
+        .attendance-row.absent {
+            background: #ffebee;
+        }
+
+        .attendance-row .att-date {
+            min-width: 90px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .attendance-row .att-status {
+            min-width: 90px;
+        }
+
+        .attendance-row.present .att-status { color: #2e7d32; }
+        .attendance-row.absent .att-status { color: #c62828; }
+
+        .attendance-row .att-group {
+            color: #666;
+            font-size: 12px;
+        }
+
         .payment-list {
             margin-top: 20px;
         }
@@ -291,11 +341,13 @@
             <p>Sporcularınızın bilgilerini ve ödeme durumlarını aşağıda görüntüleyebilirsiniz.</p>
         </div>
 
+        <!-- Test Sonuçları bölümü gizli - ileride tekrar açılabilir
         <div class="welcome-card">
             <h2>🧪 Test Sonuçları</h2>
             <p>Ölçüm sonuçlarını görmek için testler sayfasına geçebilirsiniz.</p>
             <button class="btn-success" onclick="window.location.href='testler.html'">Testleri Gör</button>
         </div>
+        -->
 
         <div id="studentsGrid" class="student-grid"></div>
 
@@ -313,7 +365,7 @@
         // Yetki kontrolü
         (function() {
             const user = localStorage.getItem('currentUser');
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }
@@ -331,12 +383,6 @@
 
             loadParentData();
         })();
-
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
 
         function showMessage(text, type = 'error') {
             const msg = document.getElementById('messageDiv');
@@ -380,9 +426,20 @@
             const card = document.createElement('div');
             card.className = 'student-card';
 
-            // Öğrencinin ödeme bilgilerini getir
-            const paymentsResponse = await fetch(`${API_URL}/students/${student.id}/period-payments`);
+            // Öğrencinin ödeme ve yoklama bilgilerini paralel getir
+            const [paymentsResponse, attendanceResponse] = await Promise.all([
+                fetch(`${API_URL}/students/${student.id}/period-payments`),
+                fetch(`${API_URL}/parent/${currentUser.id}/students/${student.id}/attendance?days=60`)
+            ]);
             const payments = await paymentsResponse.json();
+            let attendance = { present: 0, absent: 0, total: 0, rows: [] };
+            try {
+                const attData = await attendanceResponse.json();
+                if (attData && typeof attData.present === 'number') {
+                    attendance = { ...attendance, ...attData };
+                    if (!Array.isArray(attendance.rows)) attendance.rows = [];
+                }
+            } catch (_) {}
 
             // Toplam borç hesapla
             const totalDebt = payments
@@ -414,6 +471,29 @@
                     ${overduePayments.length > 0 ? 
                         `<div style="margin-top: 10px; color: #dc3545; font-size: 13px;">⚠️ ${overduePayments.length} gecikmiş ödeme</div>` : 
                         ''}
+                </div>
+
+                <div class="attendance-summary">
+                    <h4 style="margin-bottom: 10px; color: #333;">📋 Devamlılık Durumu (Son 60 gün)</h4>
+                    ${attendance.total === 0 ? 
+                        '<p style="color: #999;">Henüz yoklama kaydı yok.</p>' :
+                        `<div style="display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 12px;">
+                            <span style="color: #28a745; font-weight: 600;">✅ Var: ${attendance.present}</span>
+                            <span style="color: #dc3545; font-weight: 600;">❌ Yok: ${attendance.absent}</span>
+                            <span style="color: #666;">Toplam: ${attendance.total} antrenman</span>
+                        </div>
+                        <div class="attendance-detail-list">
+                            ${attendance.rows.map(r => {
+                                const d = r.date ? new Date(r.date).toLocaleDateString('tr-TR') : '-';
+                                const isVar = (r.status || '').trim() === 'Var';
+                                return '<div class="attendance-row ' + (isVar ? 'present' : 'absent') + '">' +
+                                    '<span class="att-date">' + esc(d) + '</span>' +
+                                    '<span class="att-status">' + (isVar ? '✅ Geldi' : '❌ Gelmedi') + '</span>' +
+                                    (r.groupName ? '<span class="att-group">' + esc(r.groupName) + '</span>' : '') +
+                                '</div>';
+                            }).join('')}
+                        </div>`
+                    }
                 </div>
 
                 <div class="payment-list">

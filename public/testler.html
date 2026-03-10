@@ -321,12 +321,6 @@
         let teamAvgMap = {};
         let generalAvgMap = {};
 
-        function logout() {
-            localStorage.removeItem('token');
-            localStorage.removeItem('currentUser');
-            window.location.href = 'login.html';
-        }
-
         function formatDate(value) {
             return value ? new Date(value).toLocaleDateString('tr-TR') : '-';
         }
@@ -362,7 +356,7 @@
 
         async function loadStudents() {
             const user = JSON.parse(localStorage.getItem('currentUser'));
-            if (!user || !localStorage.getItem('token')) {
+            if (!user) {
                 window.location.href = 'login.html';
                 return;
             }

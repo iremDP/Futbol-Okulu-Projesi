@@ -16,10 +16,19 @@
     window.API_URL = API_BASE;
     
     window.getAuthHeaders = function() {
-        const token = localStorage.getItem('token');
         const headers = { 'Content-Type': 'application/json' };
+        const token = localStorage.getItem('token');
         if (token) headers['Authorization'] = 'Bearer ' + token;
         return headers;
+    };
+
+    /** Çıkış - HttpOnly cookie temizlenir */
+    window.logout = function() {
+        fetch(API_BASE + '/logout', { method: 'POST', credentials: 'include' }).finally(function() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('currentUser');
+            window.location.href = 'login.html';
+        });
     };
 
     /** Makbuz PDF'ini token ile fetch edip yeni sekmede açar (link tıklaması token göndermez) */
@@ -44,18 +53,22 @@
     const originalFetch = window.fetch;
     window.fetch = function(url, options) {
         options = options || {};
-        const token = localStorage.getItem('token');
         const isApi = typeof url === 'string' && (url.includes('/api/') || url.includes('/api'));
-        if (token && isApi) {
-            const h = options.headers;
-            if (h && typeof h.set === 'function') {
-                h.set('Authorization', 'Bearer ' + token);
-            } else {
-                options.headers = { ...(h || {}), 'Authorization': 'Bearer ' + token };
+        if (isApi) {
+            options.credentials = options.credentials || 'include';
+            const token = localStorage.getItem('token');
+            if (token) {
+                const h = options.headers;
+                if (h && typeof h.set === 'function') {
+                    h.set('Authorization', 'Bearer ' + token);
+                } else {
+                    options.headers = { ...(h || {}), 'Authorization': 'Bearer ' + token };
+                }
             }
         }
         return originalFetch.call(this, url, options).then(function(res) {
             if (res.status === 401 && isApi && String(url).indexOf('/login') === -1) {
+                fetch(API_BASE + '/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
                 localStorage.removeItem('token');
                 localStorage.removeItem('currentUser');
                 window.location.href = 'login.html';

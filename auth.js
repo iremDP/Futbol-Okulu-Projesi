@@ -30,8 +30,12 @@ function setCheckUserActive(fn) {
 }
 
 function verifyToken(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  // Öncelik: HttpOnly cookie (XSS koruması), sonra Authorization header (fallback)
+  let token = req.cookies?.token || null;
+  if (!token) {
+    const authHeader = req.headers.authorization;
+    token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  }
 
   if (!token) {
     return res.status(401).json({ error: 'Oturum açmanız gerekiyor' });
