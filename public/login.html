@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <title>Giriş - Futbol Okulu Yönetim Sistemi</title>
     <style>
         * {
@@ -181,42 +186,76 @@
     <script>
         const API_URL = (window.location.origin || 'http://localhost:3000') + '/api';
 
-        // Sayfa yüklendiğinde
+        // Sayfa yüklendiğinde - token API ile doğrulanmadan yönlendirme yapma
         checkIfLoggedIn();
 
-        function checkIfLoggedIn() {
-            const user = localStorage.getItem('currentUser');
-            if (user) {
-                redirectToHome(JSON.parse(user));
+        async function checkIfLoggedIn() {
+            const stored = localStorage.getItem('currentUser');
+            if (!stored) return;
+            try {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 6000);
+                const res = await fetch(`${API_URL}/me`, { credentials: 'include', signal: ctrl.signal });
+                clearTimeout(t);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.user) {
+                        localStorage.setItem('currentUser', JSON.stringify(data.user));
+                        redirectToHome(data.user);
+                        return;
+                    }
+                }
+            } catch (e) {
+                // Ağ hatası, timeout veya sunucu kapalı
             }
+            localStorage.removeItem('currentUser');
         }
 
         // Giriş formu
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
-            const username = document.getElementById('username').value;
+            const btn = document.querySelector('.btn-login');
+            const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
 
+            if (!username || !password) {
+                showError('Kullanıcı adı ve şifre girin.');
+                return;
+            }
+
+            const origText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Giriş yapılıyor...';
+            showError(''); // Temizle
+
             try {
+                const ctrl = new AbortController();
+                const timeout = setTimeout(() => ctrl.abort(), 30000);
                 const response = await fetch(`${API_URL}/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ kullaniciAdi: username, sifre: password })
+                    body: JSON.stringify({ kullaniciAdi: username, sifre: password }),
+                    signal: ctrl.signal
                 });
+                clearTimeout(timeout);
 
                 let data;
                 try {
                     data = await response.json();
                 } catch {
                     showError('Sunucu yanıtı okunamadı. Sunucu çalışıyor mu?');
+                    btn.disabled = false;
+                    btn.textContent = origText;
                     return;
                 }
                 if (response.ok) {
                     const user = data.user;
                     if (!user) {
                         showError('Giriş yanıtı eksik.');
+                        btn.disabled = false;
+                        btn.textContent = origText;
                         return;
                     }
                     localStorage.setItem('currentUser', JSON.stringify(user));
@@ -232,9 +271,16 @@
                     redirectToHome(user);
                 } else {
                     showError(data.error || 'Giriş başarısız');
+                    btn.disabled = false;
+                    btn.textContent = origText;
                 }
             } catch (error) {
-                showError('Sunucuya bağlanılamadı. Sunucu çalışıyor mu? (npm start)');
+                const msg = error.name === 'AbortError'
+                    ? 'Sunucu 30 sn içinde yanıt vermedi. Veritabanı yavaş olabilir - terminalde "npm start" çalışıyor mu?'
+                    : 'Sunucuya bağlanılamadı. Terminalde "npm start" çalıştırın.';
+                showError(msg);
+                btn.disabled = false;
+                btn.textContent = origText;
             }
         });
 
@@ -256,14 +302,17 @@
             }
         }
 
-        // Hata göster
+        // Hata göster (boş string ile gizle)
         function showError(msg) {
             const el = document.getElementById('errorMessage');
             el.textContent = msg;
-            el.style.display = 'block';
-            setTimeout(() => {
-                el.style.display = 'none';
-            }, 3000);
+            el.style.display = msg ? 'block' : 'none';
+            if (msg) setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+
+        // PWA Service Worker
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/service-worker.js').catch(function() {});
         }
     </script>
 </body>

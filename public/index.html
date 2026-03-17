@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -620,7 +625,7 @@
                     <button id="btnAll" class="btn-filter" onclick="filterByStatus('all')">Tümü</button>
                     <button id="btnActive" class="btn-filter active" onclick="filterByStatus('active')">Aktif</button>
                     <button id="btnInactive" class="btn-filter" onclick="filterByStatus('inactive')">Pasif</button>
-                    <button class="btn-primary" onclick="loadStudents(0, true)" style="padding: 10px 20px;">Son 50</button>
+                    <button class="btn-primary" onclick="loadStudents(0)" style="padding: 10px 20px;">Yükle</button>
                 </div>
             </div>
             <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 15px;">
@@ -630,6 +635,7 @@
                 <button class="btn-success" onclick="exportPayments('Ödendi')">📤 Ödeme Excel</button>
             </div>
             <div class="students-grid" id="studentsList"></div>
+            <div id="studentsPagination" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;"></div>
         </div>
     </div>
 
@@ -926,6 +932,7 @@
                     <p><strong>TC:</strong> <span id="detailTcNo"></span></p>
                     <p><strong>Doğum Tarihi:</strong> <span id="detailBirthDate"></span></p>
                     <p><strong>Durum:</strong> <span id="detailDurum"></span></p>
+                    <p><strong>Şube:</strong> <span id="detailSube"></span></p>
                     <p><strong>Grup:</strong> <span id="detailGroup"></span></p>
                     <p><strong>Kayıt Tarihi:</strong> <span id="detailKayitTarihi"></span></p>
                     <p><strong>Son Aktif:</strong> <span id="detailLastActive"></span></p>
@@ -1056,6 +1063,7 @@
     <script>
         const API_URL = (window.API_URL || window.location.origin + '/api');
         let allStudents = [];
+        let allSubeler = [];
 
         // Yetki kontrolü
         (function() {
@@ -1071,8 +1079,9 @@
 
         // Menü ortak dosyadan yüklenir
 
-        const PAGE_SIZE = 50;
+        const PAGE_SIZE = 20;
         let studentsTotalCount = 0;
+        let currentStudentsPage = 0;
 
         function showMessage(text) {
             const msg = document.getElementById('successMessage');
@@ -1216,6 +1225,7 @@
             try {
                 const response = await fetch(`${API_URL}/subeler/active`);
                 const subeler = await response.json();
+                allSubeler = subeler;
                 
                 const select = document.getElementById('studentSube');
                 if (select) {
@@ -1424,11 +1434,11 @@
         });
 
         let searchDebounceTimer = null;
-        async function loadStudents(offset = 0, append = false) {
+        async function loadStudents(page = 0) {
             try {
                 const user = JSON.parse(localStorage.getItem('currentUser'));
                 const q = document.getElementById('searchInput').value.trim();
-                let url = `${API_URL}/students?limit=${PAGE_SIZE}&offset=${offset}`;
+                let url = `${API_URL}/students?limit=${PAGE_SIZE}&offset=${page * PAGE_SIZE}`;
                 if (user.rol === 'yonetici' && user.subeId) url += `&subeId=${user.subeId}`;
                 if (q) url += `&q=${encodeURIComponent(q)}`;
                 if (currentStatusFilter === 'active') url += '&durum=Aktif';
@@ -1438,9 +1448,10 @@
                 const rows = Array.isArray(data) ? data : (data.rows || []);
                 const total = Array.isArray(data) ? data.length : (data.total || 0);
                 studentsTotalCount = total;
-                if (append) allStudents = allStudents.concat(rows);
-                else allStudents = rows;
-                displayStudents(allStudents, total, offset + rows.length);
+                allStudents = rows;
+                currentStudentsPage = page;
+                displayStudents(allStudents, total);
+                renderStudentsPagination();
                 updateStats();
             } catch (error) {
                 console.error('Öğrenciler yüklenemedi:', error);
@@ -1476,10 +1487,6 @@
             searchDebounceTimer = setTimeout(() => loadStudents(0), 350);
         });
 
-        function loadMoreStudents() {
-            loadStudents(allStudents.length, true);
-        }
-
         function filterByStatus(status) {
             currentStatusFilter = status;
             document.querySelectorAll('.btn-filter').forEach(btn => btn.classList.remove('active'));
@@ -1489,22 +1496,32 @@
             loadStudents(0);
         }
 
-        function displayStudents(students, total, shownCount) {
+        function renderStudentsPagination() {
+            const paginationEl = document.getElementById('studentsPagination');
+            if (!paginationEl) return;
+            const totalPages = Math.ceil(studentsTotalCount / PAGE_SIZE) || 1;
+            if (totalPages <= 1) {
+                paginationEl.innerHTML = studentsTotalCount > 0 ? `<span style="color:#666;">Toplam ${studentsTotalCount} öğrenci</span>` : '';
+                return;
+            }
+            let html = '';
+            if (currentStudentsPage > 0) {
+                html += `<button class="btn-primary" onclick="loadStudents(${currentStudentsPage - 1})" style="padding: 8px 16px;">← Önceki</button>`;
+            }
+            html += `<span style="padding: 0 15px; font-weight: 600;">Sayfa ${currentStudentsPage + 1} / ${totalPages}</span>`;
+            if (currentStudentsPage < totalPages - 1) {
+                html += `<button class="btn-primary" onclick="loadStudents(${currentStudentsPage + 1})" style="padding: 8px 16px;">Sonraki →</button>`;
+            }
+            html += `<span style="color:#666; margin-left: 10px;">(${studentsTotalCount} öğrenci)</span>`;
+            paginationEl.innerHTML = html;
+        }
+
+        function displayStudents(students, total) {
             const list = document.getElementById('studentsList');
 
             if (students.length === 0) {
-                list.innerHTML = '<p style="text-align: center; color: #999; grid-column: 1/-1;">Öğrenci bulunamadı. Arama yapın veya "Son 50" ile listeyi yükleyin.</p>';
+                list.innerHTML = '<p style="text-align: center; color: #999; grid-column: 1/-1;">Öğrenci bulunamadı. Arama yapın veya "Yükle" ile listeyi getirin.</p>';
                 return;
-            }
-
-            let footer = '';
-            if (total !== undefined && total > students.length) {
-                footer = `<div style="grid-column: 1/-1; text-align: center; padding: 15px;">
-                    <span style="color: #666;">${students.length} / ${total} gösteriliyor</span>
-                    <button class="btn-primary" onclick="loadMoreStudents()" style="margin-left: 15px; padding: 8px 20px;">Daha fazla yükle</button>
-                </div>`;
-            } else if (total !== undefined && total > 0) {
-                footer = `<div style="grid-column: 1/-1; text-align: center; padding: 10px; color: #666;">Toplam ${total} öğrenci</div>`;
             }
 
             list.innerHTML = students.map(student => `
@@ -1530,7 +1547,7 @@
                         <button class="btn-danger" onclick="deleteStudent(${student.id})">🗑️ Sil</button>
                     </div>
                 </div>
-            `).join('') + footer;
+            `).join('');
         }
 
         function editStudent(id) {
@@ -1839,6 +1856,7 @@
             document.getElementById('detailTcNo').textContent = student.tcNo || '-';
             document.getElementById('detailBirthDate').textContent = student.dogumTarihi ? new Date(student.dogumTarihi).toLocaleDateString('tr-TR') : '-';
             document.getElementById('detailDurum').innerHTML = `<span style="color: ${student.durum === 'Aktif' ? '#28a745' : '#dc3545'}; font-weight: 600;">${esc(student.durum)}</span>`;
+            document.getElementById('detailSube').textContent = (student.subeAdi || (student.subeId && allSubeler ? (allSubeler.find(s => s.id === student.subeId)?.subeAdi || '-') : '-')) || '-';
             document.getElementById('detailKayitTarihi').textContent = student.kayitTarihi
                 ? new Date(student.kayitTarihi).toLocaleDateString('tr-TR')
                 : '-';

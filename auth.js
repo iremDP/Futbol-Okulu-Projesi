@@ -16,8 +16,9 @@ if (process.env.NODE_ENV !== 'production' && JWT_SECRET === DEFAULT_DEV_SECRET) 
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '1d';
 
 function generateToken(user) {
+  const subeId = user.subeId ?? user.subeid;
   return jwt.sign(
-    { id: user.id, rol: user.rol, subeId: user.subeId },
+    { id: user.id, rol: user.rol, subeId },
     JWT_SECRET,
     { expiresIn: JWT_EXPIRES }
   );

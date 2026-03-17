@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <title>Veli Paneli - Futbol Okulu</title>
     <style>
         * {
@@ -31,6 +36,7 @@
             font-weight: bold;
             color: #667eea;
         }
+        .logo-mobile { display: none; }
 
         .container {
             max-width: 1200px;
@@ -325,8 +331,8 @@
     <link rel="stylesheet" href="css/responsive.css">
 </head>
 <body>
-    <div class="header">
-        <div class="logo">⚽ Beşiktaş Futbol Okulu - Veli Paneli</div>
+    <div class="header header-veli">
+        <div class="logo"><span class="logo-full">⚽ Beşiktaş Futbol Okulu - Veli Paneli</span><span class="logo-mobile">⚽ Veli Paneli</span></div>
         <div class="user-info">
             <span id="currentUserName"></span>
             <button onclick="logout()" class="btn-danger">Çıkış</button>

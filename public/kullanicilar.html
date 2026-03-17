@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <title>Kullanıcı Yönetimi - Futbol Okulu</title>
     <style>
         * {
@@ -379,7 +384,7 @@
                         <input type="text" id="searchInput" placeholder="🔍 Ara (ad, kullanıcı adı...)" 
                                style="width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px;">
                     </div>
-                    <button type="button" class="btn-primary" onclick="loadUsers(0)" style="padding: 10px 20px;">Son 50</button>
+                    <button type="button" class="btn-primary" onclick="loadUsers(0)" style="padding: 10px 20px;">Yükle</button>
                     <div>
                         <select id="roleFilter" style="padding: 12px 20px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px; min-width: 150px;">
                             <option value="">Tüm Roller</option>
@@ -397,6 +402,7 @@
                 </div>
                 
                 <div id="usersList"></div>
+                <div id="usersPagination" style="margin-top: 20px; display: flex; justify-content: center; align-items: center; gap: 10px; flex-wrap: wrap;"></div>
             </div>
 
             <!-- Yeni Kullanıcı -->
@@ -616,21 +622,30 @@
         }
 
         let searchUserDebounce = null;
-        const USER_PAGE_SIZE = 50;
-        // Kullanıcıları yükle (limit ile - arama/sayfalama)
-        async function loadUsers(offset = 0, append = false) {
+        const USER_PAGE_SIZE = 20;
+        let usersTotalCount = 0;
+        let currentUsersPage = 0;
+        // Kullanıcıları yükle (sayfa bazlı - her sayfa 20 kullanıcı)
+        async function loadUsers(page = 0) {
             try {
                 const user = JSON.parse(localStorage.getItem('currentUser'));
                 const q = document.getElementById('searchInput')?.value.trim() || '';
-                let url = `${API_URL}/users?limit=${USER_PAGE_SIZE}&offset=${offset}`;
+                const roleFilter = document.getElementById('roleFilter')?.value || '';
+                const subeFilter = document.getElementById('subeFilter')?.value || '';
+                let url = `${API_URL}/users?limit=${USER_PAGE_SIZE}&offset=${page * USER_PAGE_SIZE}`;
                 if (user.rol === 'yonetici' && user.subeId) url += `&subeId=${user.subeId}`;
+                else if (subeFilter) url += `&subeId=${subeFilter}`;
                 if (q) url += `&q=${encodeURIComponent(q)}`;
+                if (roleFilter) url += `&rol=${encodeURIComponent(roleFilter)}`;
                 const response = await fetch(url);
                 const data = await response.json();
                 const rows = Array.isArray(data) ? data : (data.rows || []);
-                if (append) allUsers = (allUsers || []).concat(rows);
-                else allUsers = rows;
-                filterUsers();
+                const total = Array.isArray(data) ? data.length : (data.total || rows.length);
+                allUsers = rows;
+                usersTotalCount = total;
+                currentUsersPage = page;
+                displayUsers(allUsers);
+                renderUsersPagination();
             } catch (error) {
                 console.error('Kullanıcılar yüklenemedi:', error);
             }
@@ -670,8 +685,6 @@
                         allSubeler.map(sube => `<option value="${sube.id}">${esc(sube.subeAdi)}</option>`).join('');
                     subeFilter.style.display = 'inline-block';
                 }
-
-                filterUsers();
             } catch (error) {
                 console.error('Şubeler yüklenemedi:', error);
             }
@@ -746,26 +759,33 @@
             }
         });
 
+        function renderUsersPagination() {
+            const paginationEl = document.getElementById('usersPagination');
+            if (!paginationEl) return;
+            const totalPages = Math.ceil(usersTotalCount / USER_PAGE_SIZE) || 1;
+            if (totalPages <= 1) {
+                paginationEl.innerHTML = usersTotalCount > 0 ? `<span style="color:#666;">Toplam ${usersTotalCount} kullanıcı</span>` : '';
+                return;
+            }
+            let html = '';
+            if (currentUsersPage > 0) {
+                html += `<button class="btn-primary" onclick="loadUsers(${currentUsersPage - 1})" style="padding: 8px 16px;">← Önceki</button>`;
+            }
+            html += `<span style="padding: 0 15px; font-weight: 600;">Sayfa ${currentUsersPage + 1} / ${totalPages}</span>`;
+            if (currentUsersPage < totalPages - 1) {
+                html += `<button class="btn-primary" onclick="loadUsers(${currentUsersPage + 1})" style="padding: 8px 16px;">Sonraki →</button>`;
+            }
+            html += `<span style="color:#666; margin-left: 10px;">(${usersTotalCount} kullanıcı)</span>`;
+            paginationEl.innerHTML = html;
+        }
+
         // Arama ve filtre
         document.getElementById('searchInput')?.addEventListener('input', function() {
             clearTimeout(searchUserDebounce);
             searchUserDebounce = setTimeout(() => loadUsers(0), 350);
         });
-        document.getElementById('roleFilter')?.addEventListener('change', filterUsers);
-        document.getElementById('subeFilter')?.addEventListener('change', filterUsers);
-
-        function filterUsers() {
-            const roleFilter = document.getElementById('roleFilter').value;
-            const subeFilter = document.getElementById('subeFilter')?.value || '';
-
-            let filtered = (allUsers || []).filter(user => {
-                const matchesRole = !roleFilter || user.rol === roleFilter;
-                const matchesSube = !subeFilter || String(user.subeId || '') === subeFilter;
-                return matchesRole && matchesSube;
-            });
-
-            displayUsers(filtered);
-        }
+        document.getElementById('roleFilter')?.addEventListener('change', () => loadUsers(0));
+        document.getElementById('subeFilter')?.addEventListener('change', () => loadUsers(0));
 
         // Kullanıcıları göster
         function displayUsers(users = allUsers) {

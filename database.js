@@ -4,6 +4,7 @@ const path = require('path');
 const Database = require('better-sqlite3');
 const bcrypt = require('bcrypt');
 const db = new Database('futbol-okulu.db');
+db.pragma('journal_mode = WAL'); // Eşzamanlı okuma/yazma performansı
 
 // Mevcut düz metin şifreleri hash'e çevir (tek seferlik migration)
 function migratePasswordsToHash() {
@@ -311,6 +312,48 @@ try {
   db.exec('ALTER TABLE payment_periods ADD COLUMN subeId INTEGER');
 } catch (e) {}
 
+// Eksik veli kullanıcılarını oluştur (veli olmayan öğrenciler için)
+function createMissingParentUsers() {
+  try {
+    const studentsWithoutVeli = db.prepare(`
+      SELECT s.id, s.veliAdi, s.tcNo, s.veliTelefon1, s.email FROM students s
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.rol = 'veli' AND u.studentId = s.id)
+    `).all();
+    let created = 0;
+    for (const st of studentsWithoutVeli) {
+      const kullaniciAdi = st.tcNo || ('veli' + st.id);
+      if (db.prepare('SELECT id FROM users WHERE kullaniciAdi = ?').get(kullaniciAdi)) continue;
+      const sifre = st.tcNo || crypto.randomBytes(4).toString('hex');
+      const student = db.prepare('SELECT subeId FROM students WHERE id = ?').get(st.id);
+      const subeId = student ? student.subeId : null;
+      const hashedSifre = bcrypt.hashSync(sifre, 10);
+      db.prepare(`
+        INSERT INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, email, studentId, subeId, aktif, olusturmaTarihi)
+        VALUES (?, ?, 'veli', ?, ?, ?, ?, ?, 1, ?)
+      `).run(kullaniciAdi, hashedSifre, st.veliAdi || 'Veli', st.veliTelefon1 || '', st.email || '', st.id, subeId, new Date().toISOString());
+      created++;
+    }
+    if (created > 0) console.log('Eksik veli oluşturuldu:', created);
+  } catch (e) {
+    console.error('Eksik veli oluşturma hatası:', e.message);
+  }
+}
+
+// subeId backfill: gruplardan ve antrenörlerden öğrenci/veli şube bilgisini doldur
+function backfillSubeIds() {
+  try {
+    createMissingParentUsers();
+    db.exec(`UPDATE groups SET subeId = (SELECT subeId FROM users WHERE id = groups.instructorId AND subeId IS NOT NULL) WHERE subeId IS NULL AND instructorId IS NOT NULL`);
+    db.exec(`UPDATE students SET subeId = (SELECT subeId FROM groups WHERE id = students.groupId AND subeId IS NOT NULL) WHERE subeId IS NULL AND groupId IS NOT NULL`);
+    db.exec(`UPDATE students SET subeId = (SELECT u.subeId FROM groups g JOIN users u ON g.instructorId = u.id WHERE g.id = students.groupId AND u.subeId IS NOT NULL) WHERE subeId IS NULL AND groupId IS NOT NULL`);
+    db.exec(`UPDATE users SET subeId = (SELECT subeId FROM students WHERE id = users.studentId AND subeId IS NOT NULL) WHERE rol = 'veli' AND studentId IS NOT NULL`);
+    db.exec(`UPDATE users SET subeId = (SELECT COALESCE(s.subeId, g.subeId, u2.subeId) FROM students s LEFT JOIN groups g ON s.groupId = g.id LEFT JOIN users u2 ON g.instructorId = u2.id WHERE s.id = users.studentId AND (s.subeId IS NOT NULL OR g.subeId IS NOT NULL OR u2.subeId IS NOT NULL) LIMIT 1) WHERE rol = 'veli' AND studentId IS NOT NULL AND subeId IS NULL`);
+  } catch (e) {
+    console.error('subeId backfill hatası:', e.message);
+  }
+}
+backfillSubeIds();
+
 // Varsayılan ayarları ekle
 db.exec(`
   INSERT OR IGNORE INTO settings (anahtar, deger) VALUES ('donemUcreti', '3400');
@@ -616,11 +659,20 @@ function deleteStudent(id) {
 // ============ KULLANICI FONKSİYONLARI ============
 
 function getAllUsers(subeId = null) {
-  let query = 'SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, aktif, olusturmaTarihi FROM users';
+  let query = 'SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, studentId, aktif, olusturmaTarihi FROM users';
   if (subeId) {
-    query += ' WHERE subeId = ?';
+    query += ` WHERE (subeId = ? OR (rol = 'veli' AND studentId IN (
+      SELECT s.id FROM students s
+      LEFT JOIN groups g ON s.groupId = g.id
+      LEFT JOIN users u ON g.instructorId = u.id
+      WHERE s.subeId = ? OR g.subeId = ? OR u.subeId = ?
+      UNION
+      SELECT spp.studentId FROM student_period_payments spp
+      JOIN payment_periods pp ON spp.periodId = pp.id
+      WHERE pp.subeId = ?
+    )))`;
     const stmt = db.prepare(query + ' ORDER BY id DESC');
-    return stmt.all(subeId);
+    return stmt.all(subeId, subeId, subeId, subeId, subeId);
   } else {
     const stmt = db.prepare(query + ' ORDER BY id DESC');
     return stmt.all();
@@ -628,11 +680,24 @@ function getAllUsers(subeId = null) {
 }
 
 function searchUsers(subeId = null, opts = {}) {
-  const { q = '', limit = 50, offset = 0 } = opts;
+  const { q = '', limit = 50, offset = 0, rol } = opts;
   const searchTerm = (q || '').trim();
   let where = [];
   const params = [];
-  if (subeId) { where.push('subeId = ?'); params.push(subeId); }
+  if (subeId) {
+    where.push(`(subeId = ? OR (rol = 'veli' AND studentId IN (
+      SELECT s.id FROM students s
+      LEFT JOIN groups g ON s.groupId = g.id
+      LEFT JOIN users u ON g.instructorId = u.id
+      WHERE s.subeId = ? OR g.subeId = ? OR u.subeId = ?
+      UNION
+      SELECT spp.studentId FROM student_period_payments spp
+      JOIN payment_periods pp ON spp.periodId = pp.id
+      WHERE pp.subeId = ?
+    )))`);
+    params.push(subeId, subeId, subeId, subeId, subeId);
+  }
+  if (rol) { where.push('rol = ?'); params.push(rol); }
   if (searchTerm) {
     const like = '%' + searchTerm.replace(/[%_]/g, '') + '%';
     where.push('(kullaniciAdi LIKE ? OR adSoyad LIKE ? OR telefon LIKE ? OR email LIKE ?)');
@@ -646,6 +711,43 @@ function searchUsers(subeId = null, opts = {}) {
   const stmt = db.prepare('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, aktif, olusturmaTarihi FROM users ' + whereClause + ' ORDER BY id DESC LIMIT ? OFFSET ?');
   const rows = stmt.all(...params, limitVal, offsetVal);
   return { rows, total };
+}
+
+/** Teşhis: Veli-şube eşleşmesini kontrol et (Lara vb.) */
+function getVeliDiagnostic(subeId) {
+  const subeler = db.prepare('SELECT id, subeAdi FROM subeler').all();
+  const lara = subeler.find(s => (s.subeAdi || '').toLowerCase().includes('lara'));
+  const targetId = subeId || (lara && lara.id);
+  const studentsInSube = targetId ? db.prepare('SELECT COUNT(*) as c FROM students WHERE subeId = ?').get(targetId)?.c || 0 : 0;
+  const laraStudentIds = targetId ? db.prepare('SELECT id FROM students WHERE subeId = ?').all(targetId).map(r => r.id) : [];
+  const velilerWithLaraStudent = laraStudentIds.length ? db.prepare('SELECT id, adSoyad, studentId, subeId FROM users WHERE rol = ? AND studentId IN (' + laraStudentIds.map(() => '?').join(',') + ')').all('veli', ...laraStudentIds) : [];
+  const veliler = db.prepare('SELECT id, kullaniciAdi, adSoyad, studentId, subeId FROM users WHERE rol = ?').all('veli');
+  const detay = veliler.map(v => {
+    let s = null, g = null, u = null, sppCount = 0;
+    if (v.studentId) {
+      s = db.prepare('SELECT id, ad, soyad, subeId, groupId FROM students WHERE id = ?').get(v.studentId);
+      if (s && s.groupId) {
+        g = db.prepare('SELECT id, subeId, instructorId FROM groups WHERE id = ?').get(s.groupId);
+        if (g && g.instructorId) {
+          u = db.prepare('SELECT id, subeId FROM users WHERE id = ?').get(g.instructorId);
+        }
+      }
+      const spp = db.prepare('SELECT COUNT(*) as c FROM student_period_payments spp JOIN payment_periods pp ON spp.periodId = pp.id WHERE spp.studentId = ? AND pp.subeId = ?').get(v.studentId, targetId || 0);
+      sppCount = spp ? spp.c : 0;
+    }
+    const matchSube = v.subeId == targetId;
+    const matchStudent = s && s.subeId == targetId;
+    const matchGroup = g && g.subeId == targetId;
+    const matchInstructor = u && u.subeId == targetId;
+    const matchSpp = sppCount > 0;
+    const wouldMatch = matchSube || matchStudent || matchGroup || matchInstructor || matchSpp;
+    return { veli: v.adSoyad, userId: v.id, studentId: v.studentId, userSubeId: v.subeId, studentSubeId: s?.subeId, groupSubeId: g?.subeId, instructorSubeId: u?.subeId, sppInSube: sppCount, wouldMatch };
+  });
+  const searchResult = targetId ? searchUsers(targetId, { limit: 100 }).rows : [];
+  const veliInResult = searchResult.filter(r => r.rol === 'veli');
+  const wouldMatchCount = detay.filter(d => d.wouldMatch).length;
+  const wouldMatchSample = detay.filter(d => d.wouldMatch).slice(0, 5);
+  return { subeler, targetSubeId: targetId, studentsInSube, velilerWithLaraStudentCount: velilerWithLaraStudent.length, velilerWithLaraStudent: velilerWithLaraStudent.slice(0, 5), veliCount: veliler.length, wouldMatchCount, wouldMatchSample, detay, searchResultCount: searchResult.length, veliInResultCount: veliInResult.length, veliInResult: veliInResult.slice(0, 5) };
 }
 
 function getUserById(id) {
@@ -760,6 +862,10 @@ function updateSetting(key, value) {
   const stmt = db.prepare('UPDATE settings SET deger = ? WHERE anahtar = ?');
   stmt.run(value, key);
   return { key, value };
+}
+
+function deleteSetting(key) {
+  db.prepare('DELETE FROM settings WHERE anahtar = ?').run(key);
 }
 // ============ GRUP YÖNETİMİ FONKSİYONLARI ============
 
@@ -1002,9 +1108,59 @@ function getStudentPeriodPayments(studentId) {
   return stmt.all(studentId);
 }
 
+// Her şubenin kendi son N döneminin ID'lerini getir (admin tüm şubeler toplamı için)
+// Lara'nın 6 Mart, Liman'ın 9 Mart, Meydan'ın 12 Mart gibi - her şubenin kendi en son dönemleri
+// Son 3 dönem: Lara 6 Mart+4 Nisan+2 Mayıs, Liman 9 Mart+7 Nisan+5 Mayıs vb. hepsi birleşir
+// Döner: { periodIds, startDate, endDate, selectedPeriods }
+function getLastNPeriodIdsPerSube(count) {
+  const n = Math.max(1, count);
+  const subeler = db.prepare('SELECT id FROM subeler WHERE aktif = 1').all();
+  const allPeriodIds = new Set();
+  const allPeriods = [];
+  let minStart = null, maxEnd = null;
+  const addPeriod = (p) => {
+    if (allPeriodIds.has(p.id)) return;
+    allPeriodIds.add(p.id);
+    allPeriods.push(p);
+    if (p.baslangicTarihi) {
+      const d = new Date(p.baslangicTarihi);
+      if (!minStart || d < minStart) minStart = d;
+    }
+    if (p.bitisTarihi) {
+      const d = new Date(p.bitisTarihi);
+      if (!maxEnd || d > maxEnd) maxEnd = d;
+    }
+  };
+  for (const sube of subeler) {
+    const periods = db.prepare(
+      'SELECT id, donemAdi, baslangicTarihi, bitisTarihi, tutar, subeId FROM payment_periods WHERE subeId = ? ORDER BY baslangicTarihi DESC LIMIT ?'
+    ).all(sube.id, n);
+    periods.forEach(addPeriod);
+    if (periods.length === 0) {
+      const globalPeriods = db.prepare(
+        'SELECT id, donemAdi, baslangicTarihi, bitisTarihi, tutar, subeId FROM payment_periods WHERE subeId IS NULL ORDER BY baslangicTarihi DESC LIMIT ?'
+      ).all(n);
+      globalPeriods.forEach(addPeriod);
+    }
+  }
+  if (allPeriodIds.size === 0) {
+    const globalPeriods = db.prepare(
+      'SELECT id, donemAdi, baslangicTarihi, bitisTarihi, tutar, subeId FROM payment_periods WHERE subeId IS NULL ORDER BY baslangicTarihi DESC LIMIT ?'
+    ).all(n);
+    globalPeriods.forEach(addPeriod);
+  }
+  return {
+    periodIds: Array.from(allPeriodIds),
+    startDate: minStart ? minStart.toISOString().split('T')[0] : null,
+    endDate: maxEnd ? maxEnd.toISOString().split('T')[0] : null,
+    selectedPeriods: allPeriods.sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi))
+  };
+}
+
 // Tüm öğrencilerin dönem ödemelerini getir (detaylı)
 // subeId verilirse: sadece o şubedeki öğrencilerin, o şubeye ait dönemlerdeki ödemeleri
-function getAllStudentPeriodPayments(subeId = null) {
+// periodIds verilirse: sadece bu dönem ID'lerindeki ödemeler (admin tüm şubeler toplamı için)
+function getAllStudentPeriodPayments(subeId = null, periodIds = null) {
   let query = `
     SELECT 
       spp.*,
@@ -1026,25 +1182,34 @@ function getAllStudentPeriodPayments(subeId = null) {
     JOIN students s ON spp.studentId = s.id
     JOIN payment_periods pp ON spp.periodId = pp.id
   `;
-  
-  if (subeId) {
-    // Her şube sadece kendi dönemlerindeki ödemeleri görsün (öğrenci + dönem aynı şubede)
-    query += ' WHERE s.subeId = ? AND pp.subeId = ?';
-    const stmt = db.prepare(query + ' ORDER BY pp.baslangicTarihi DESC, s.ad');
-    return stmt.all(subeId, subeId);
-  } else {
-    const stmt = db.prepare(query + ' ORDER BY pp.baslangicTarihi DESC, s.ad');
-    return stmt.all();
+  const params = [];
+  const conditions = [];
+
+  if (periodIds && periodIds.length > 0) {
+    const placeholders = periodIds.map(() => '?').join(',');
+    conditions.push(`pp.id IN (${placeholders})`);
+    params.push(...periodIds);
+  } else if (subeId) {
+    conditions.push('s.subeId = ? AND pp.subeId = ?');
+    params.push(subeId, subeId);
   }
+
+  if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
+  query += ' ORDER BY pp.baslangicTarihi DESC, s.ad';
+  const stmt = db.prepare(query);
+  return stmt.all(...params);
 }
 
 function searchStudentPeriodPayments(subeId = null, opts = {}) {
-  const { q = '', limit = 50, offset = 0, periodId, odemeDurumu } = opts;
+  const { q = '', limit = 50, offset = 0, periodId, periodIds, odemeDurumu } = opts;
   const searchTerm = (q || '').trim();
   let where = [];
   const params = [];
-  if (subeId) { where.push('s.subeId = ? AND pp.subeId = ?'); params.push(subeId, subeId); }
-  if (periodId) { where.push('pp.id = ?'); params.push(periodId); }
+  if (subeId && !periodIds) { where.push('s.subeId = ? AND pp.subeId = ?'); params.push(subeId, subeId); }
+  if (periodIds && periodIds.length > 0) {
+    where.push('pp.id IN (' + periodIds.map(() => '?').join(',') + ')');
+    params.push(...periodIds);
+  } else if (periodId) { where.push('pp.id = ?'); params.push(periodId); }
   if (odemeDurumu) { where.push('spp.odemeDurumu = ?'); params.push(odemeDurumu); }
   if (searchTerm) {
     const like = '%' + searchTerm.replace(/[%_]/g, '') + '%';
@@ -2074,6 +2239,7 @@ module.exports = {
   getInactiveStudents,
   getAllUsers,
   searchUsers,
+  getVeliDiagnostic,
   getUserById,
   createUser,
   updateUser,
@@ -2087,8 +2253,10 @@ module.exports = {
   deleteLegacyPayment,
   getSetting,
   updateSetting,
+  deleteSetting,
   getStudentStats,
   getAllPeriods,
+  getLastNPeriodIdsPerSube,
   getActivePeriods,
   createPeriod,
   updatePeriod,

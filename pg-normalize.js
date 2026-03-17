@@ -8,7 +8,7 @@ function toCamelCase(str) {
 }
 
 const KEY_MAP = {
-  kullaniciadi: 'kullaniciAdi', adsoyad: 'adSoyad',
+  kullaniciadi: 'kullaniciAdi', adsoyad: 'adSoyad', tcno: 'tcNo',
   subeadi: 'subeAdi', subeid: 'subeId', olusturmatarihi: 'olusturmaTarihi',
   groupname: 'groupName', instructorid: 'instructorId', kapanis: 'kapanis',
   donemadi: 'donemAdi', baslangictarihi: 'baslangicTarihi', bitistarihi: 'bitisTarihi',

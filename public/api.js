@@ -1,5 +1,5 @@
 /**
- * API yardımcıları - JWT token ile kimlik doğrulama
+ * API yardımcıları - Kimlik doğrulama HttpOnly cookie ile (XSS güvenli)
  * Tüm sayfalarda bu dosya menu.js'den önce yüklenmeli
  */
 (function() {
@@ -15,27 +15,25 @@
     
     window.API_URL = API_BASE;
     
+    /** API istekleri için header - credentials: 'include' cookie gönderir */
     window.getAuthHeaders = function() {
-        const headers = { 'Content-Type': 'application/json' };
-        const token = localStorage.getItem('token');
-        if (token) headers['Authorization'] = 'Bearer ' + token;
-        return headers;
+        return { 'Content-Type': 'application/json' };
     };
 
     /** Çıkış - HttpOnly cookie temizlenir */
     window.logout = function() {
         fetch(API_BASE + '/logout', { method: 'POST', credentials: 'include' }).finally(function() {
-            localStorage.removeItem('token');
             localStorage.removeItem('currentUser');
+            localStorage.removeItem('mustChangePassword');
             window.location.href = 'login.html';
         });
     };
 
-    /** Makbuz PDF'ini token ile fetch edip yeni sekmede açar (link tıklaması token göndermez) */
+    /** Makbuz PDF - credentials: 'include' ile cookie gönderilir */
     window.openReceipt = async function(paymentId) {
         try {
             const url = API_BASE + '/period-payments/' + paymentId + '/receipt';
-            const res = await fetch(url);
+            const res = await fetch(url, { credentials: 'include' });
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
                 alert(err.error || 'Makbuz alınamadı');
@@ -56,24 +54,22 @@
         const isApi = typeof url === 'string' && (url.includes('/api/') || url.includes('/api'));
         if (isApi) {
             options.credentials = options.credentials || 'include';
-            const token = localStorage.getItem('token');
-            if (token) {
-                const h = options.headers;
-                if (h && typeof h.set === 'function') {
-                    h.set('Authorization', 'Bearer ' + token);
-                } else {
-                    options.headers = { ...(h || {}), 'Authorization': 'Bearer ' + token };
-                }
-            }
         }
         return originalFetch.call(this, url, options).then(function(res) {
             if (res.status === 401 && isApi && String(url).indexOf('/login') === -1) {
                 fetch(API_BASE + '/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
-                localStorage.removeItem('token');
                 localStorage.removeItem('currentUser');
+                localStorage.removeItem('mustChangePassword');
                 window.location.href = 'login.html';
             }
             return res;
         });
     };
 })();
+
+/* PWA Service Worker kaydı */
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js').catch(function() {});
+    });
+}

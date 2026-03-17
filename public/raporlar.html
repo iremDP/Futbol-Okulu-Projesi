@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <title>Raporlar - Futbol Okulu</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -499,13 +504,16 @@
             const response = await fetch(`${API_URL}/reports/summary?${params.toString()}`);
             const data = await response.json();
 
-            // Dönem bilgisi
+            // Dönem bilgisi (admin Tüm Şubeler seçiliyken gizlenir)
             const periodInfo = document.getElementById('periodInfo');
-            if (data.selectedPeriods && data.selectedPeriods.length > 0) {
+            const isAdminAllSubeler = user.rol === 'admin' && !selectedSubeId;
+            if (isAdminAllSubeler) {
+                periodInfo.style.display = 'none';
+            } else if (data.selectedPeriods && data.selectedPeriods.length > 0) {
                 const periodText = data.selectedPeriods.map(p => {
                     const bas = p.baslangicTarihi ? new Date(p.baslangicTarihi).toLocaleDateString('tr-TR') : '-';
                     const bit = p.bitisTarihi ? new Date(p.bitisTarihi).toLocaleDateString('tr-TR') : '-';
-                    return `${esc(p.donemAdi || '')} (${bas} - ${bit})`;
+                    return `${esc(p.donemAdi || p.donemadi || '')} (${bas} - ${bit})`;
                 }).join(' | ');
                 periodInfo.innerHTML = '<strong>Seçilen dönem: </strong>' + periodText;
                 periodInfo.style.display = 'block';

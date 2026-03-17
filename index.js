@@ -19,6 +19,9 @@ const multer = require('multer');
 const XLSX = require('xlsx');
 const db = require('./db');
 const auth = require('./auth');
+const { safeParseId, safeQueryId, pickAllowed, safeErrorMsg } = require('./lib/utils');
+const { getMailTransporter, getPdfFontPath } = require('./lib/services');
+const logger = require('./lib/logger');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -32,60 +35,10 @@ const upload = multer({
   }
 });
 
-let mailTransporter = null;
-function getMailTransporter() {
-  if (mailTransporter) return mailTransporter;
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
-  if (!smtpHost || !smtpUser || !smtpPass) return null;
-  mailTransporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: process.env.SMTP_PORT === '465',
-    auth: { user: smtpUser, pass: smtpPass }
-  });
-  return mailTransporter;
-}
-
-function getPdfFontPath() {
-  const candidates = [
-    path.join(__dirname, 'fonts', 'DejaVuSans.ttf'),
-    path.join(__dirname, 'fonts', 'NotoSans-Regular.ttf')
-  ];
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) return candidate;
-  }
-  const windowsFont = path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts', 'arial.ttf');
-  if (fs.existsSync(windowsFont)) return windowsFont;
-  return null;
-}
-
 const app = express();
 const port = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
-const safeErrorMsg = (msg) => isProduction ? 'Bir hata oluştu' : msg;
-
-function safeParseId(val) {
-  const id = parseInt(val, 10);
-  return (isNaN(id) || id < 1) ? null : id;
-}
-
-/** Query param'dan güvenli subeId/instructorId/groupId parse */
-function safeQueryId(val) {
-  if (val === undefined || val === null || val === '') return null;
-  return safeParseId(val);
-}
-
-/** Mass assignment koruması - sadece izin verilen alanları al */
-function pickAllowed(body, allowedFields) {
-  if (!body || typeof body !== 'object') return {};
-  const result = {};
-  for (const f of allowedFields) {
-    if (body[f] !== undefined) result[f] = body[f];
-  }
-  return result;
-}
+const safeErr = (msg) => safeErrorMsg(msg, isProduction);
 
 // Güvenlik middleware - CSP XSS son savunma hattı
 // script-src-attr: inline event handler'lar (onclick vb.) için gerekli - HTML'de kullanılıyor
@@ -119,6 +72,24 @@ app.use((req, res, next) => {
 app.use(cookieParser());
 app.use(bodyParser.json({ limit: '1mb' }));
 app.get('/favicon.ico', (req, res) => res.status(204).end());
+// Hızlı kontrol - DB'ye ihtiyaç yok (sunucu çalışıyor mu test için)
+app.get('/durum', (req, res) => res.send('OK'));
+app.get('/api/ping', (req, res) => res.json({ ok: true }));
+// DB bağlantı testi - login takılıyorsa bu deneyin
+app.get('/api/db-test', async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const user = await db.getUserByUsername('admin');
+    res.json({ ok: true, ms: Date.now() - t0, user: !!user });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message, ms: Date.now() - t0 });
+  }
+});
+// Ana sayfa: Giriş sayfasını doğrudan sun
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
 app.use(express.static('public'));
 
 // HTTPS zorlaması (production'da reverse proxy arkasında)
@@ -164,11 +135,18 @@ const emailLimiter = rateLimit({
   legacyHeaders: false
 });
 
-// Token doğrulamasında kullanıcı aktiflik kontrolü (silinen/devre dışı hesaplar)
+// Token doğrulamasında kullanıcı aktiflik kontrolü - 60 sn cache (takılmayı önler)
+const userActiveCache = new Map();
+const CACHE_TTL = 60000; // 60 sn
 auth.setCheckUserActive(async (userId) => {
+  const now = Date.now();
+  const cached = userActiveCache.get(userId);
+  if (cached && cached.until > now) return cached.active;
   try {
     const user = await db.getUserById(userId);
-    return user && (user.aktif === 1 || user.aktif === true);
+    const active = user && (user.aktif === 1 || user.aktif === true);
+    userActiveCache.set(userId, { active, until: now + CACHE_TTL });
+    return active;
   } catch {
     return true;
   }
@@ -176,7 +154,7 @@ auth.setCheckUserActive(async (userId) => {
 
 // API kimlik doğrulama - /api/login ve /api/health hariç tüm /api istekleri için
 app.use((req, res, next) => {
-  if ((req.originalUrl === '/api/login' && req.method === 'POST') || req.originalUrl === '/api/health') return next();
+  if ((req.originalUrl === '/api/login' && req.method === 'POST') || req.originalUrl === '/api/ping' || req.originalUrl === '/api/db-test' || req.originalUrl.startsWith('/api/health')) return next();
   if (req.originalUrl.startsWith('/api/')) return auth.verifyToken(req, res, next);
   next();
 });
@@ -187,14 +165,23 @@ app.use((req, res, next) => {
   next();
 });
 
-// Ana sayfa
-app.get('/', (req, res) => {
-  res.send('Futbol Okulu API Çalışıyor! 🎉');
-});
 
 // Health check (hosting/monitoring için)
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+  const out = { status: 'ok', timestamp: new Date().toISOString() };
+  if (req.query.db === '1' && process.env.DATABASE_URL) {
+    try {
+      const [s, u, st] = await Promise.all([
+        db.getAllSubeler ? db.getAllSubeler() : [],
+        db.getAllUsers ? db.getAllUsers(null) : [],
+        db.getAllStudents ? db.getAllStudents() : []
+      ]);
+      out.db = { subeler: (s || []).length, users: (u || []).length, students: (st || []).length };
+    } catch (e) {
+      out.db = { error: e.message };
+    }
+  }
+  res.json(out);
 });
 
 // Öğrencileri getir (şube filtrelemeli) - limit varsa arama/sayfalama
@@ -215,7 +202,7 @@ app.get('/api/students', auth.requireStaff, async (req, res) => {
       res.json(students);
     }
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -232,7 +219,7 @@ app.post('/api/students', auth.requireAdminOrYonetici, async (req, res) => {
     const newStudent = await db.addStudent(student);
     res.json(newStudent);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -389,8 +376,8 @@ app.post('/api/students/import', auth.requireAdminOrYonetici, (req, res, next) =
     }
     res.json({ success: true, ...results });
   } catch (error) {
-    console.error('Import hatası:', error);
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    logger.error('Import hatası', { error: error.message });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -423,7 +410,7 @@ app.put('/api/students/:id', auth.requireAdminOrYonetici, async (req, res) => {
     const updatedStudent = await db.updateStudent(id, pickAllowed(req.body, STUDENT_UPDATE_FIELDS));
     res.json(updatedStudent);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -441,7 +428,7 @@ app.delete('/api/students/:id', auth.requireAdminOrYonetici, async (req, res) =>
     await db.deleteStudent(id);
     res.json({ message: 'Öğrenci silindi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 // Sporcu durumunu değiştir
@@ -460,7 +447,7 @@ app.put('/api/students/:id/status', auth.requireAdminOrYonetici, async (req, res
     await db.changeStudentStatus(id, durum, ayrilmaTarihi, sebep, aciklama, degistirenKullanici);
     res.json({ success: true, message: 'Durum güncellendi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -472,7 +459,7 @@ app.get('/api/students/:id/status-history', auth.requireStaff, async (req, res) 
     const history = await db.getStudentStatusHistory(id);
     res.json(history);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -484,7 +471,7 @@ app.get('/api/students/active', auth.requireStaff, async (req, res) => {
     const students = await db.getActiveStudents(subeId);
     res.json(students);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -495,31 +482,47 @@ app.get('/api/students/inactive', auth.requireStaff, async (req, res) => {
     const students = await db.getInactiveStudents(subeId);
     res.json(students);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 /// ============ KULLANICI YÖNETİMİ API ============
 
 // Giriş yap (rate limit uygulanır)
 app.post('/api/login', async (req, res) => {
+  const kullaniciAdi = req.body?.kullaniciAdi;
+  logger.info('Login isteği', { kullaniciAdi: kullaniciAdi || '(body yok)' });
+  const t0 = Date.now();
+
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      logger.error('Login zaman aşımı (30sn)', { hint: 'DB/bcrypt yavaş olabilir' });
+      res.status(503).json({ error: 'Sunucu meşgul. Lütfen tekrar deneyin.' });
+    }
+  }, 30000);
+
   try {
-    const { kullaniciAdi, sifre } = req.body || {};
+    const { sifre } = req.body || {};
     if (!kullaniciAdi || !sifre || typeof kullaniciAdi !== 'string' || typeof sifre !== 'string') {
+      clearTimeout(timeout);
       return res.status(400).json({ error: 'Kullanıcı adı ve şifre gerekli' });
     }
     const user = await db.getUserByUsername(kullaniciAdi.trim());
+    logger.debug('Login DB kullanıcı', { ms: Date.now() - t0 });
     
     if (!user) {
+      clearTimeout(timeout);
       return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
     }
-    
+
     // Şifre kontrolü (bcrypt hash veya eski düz metin - migration sonrası hep hash)
     let sifreGecerli = false;
     if (!user.sifre) {
+      clearTimeout(timeout);
       return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
     }
     if (user.sifre.startsWith('$2')) {
       sifreGecerli = await bcrypt.compare(sifre, user.sifre);
+      logger.debug('Login bcrypt.compare', { ms: Date.now() - t0 });
     } else {
       sifreGecerli = user.sifre === sifre;
       if (sifreGecerli) {
@@ -528,20 +531,26 @@ app.post('/api/login', async (req, res) => {
       }
     }
     if (!sifreGecerli) {
+      clearTimeout(timeout);
       return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı' });
     }
-    
+
     if (!user.aktif || user.aktif == 0) {
+      clearTimeout(timeout);
       return res.status(403).json({ error: 'Hesabınız devre dışı bırakılmış' });
     }
     
     const token = auth.generateToken(user);
     let mustChangePassword = false;
-    if (user.kullaniciAdi === 'admin') {
+    const userRol = user.kullaniciAdi ?? user.kullaniciadi;
+    if (userRol === 'admin') {
       const initialHash = await db.getSetting('admin_initial_password_hash');
+      logger.debug('Login getSetting', { ms: Date.now() - t0 });
       mustChangePassword = !!initialHash && (await bcrypt.compare(sifre, initialHash));
     }
-    const userPayload = { id: user.id, kullaniciAdi: user.kullaniciAdi, rol: user.rol, adSoyad: user.adSoyad, studentId: user.studentId, subeId: user.subeId };
+    const subeIdVal = user.subeId ?? user.subeid;
+    const userPayload = { id: user.id, kullaniciAdi: user.kullaniciAdi, rol: user.rol, adSoyad: user.adSoyad, studentId: user.studentId ?? user.studentid, subeId: subeIdVal };
+    clearTimeout(timeout);
     res.cookie('token', token, {
       httpOnly: true,
       secure: isProduction,
@@ -549,13 +558,17 @@ app.post('/api/login', async (req, res) => {
       maxAge: 24 * 60 * 60 * 1000,
       path: '/'
     });
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       mustChangePassword: !!mustChangePassword,
       user: userPayload
     });
   } catch (error) {
-    res.status(500).json({ error: isProduction ? 'Giriş sırasında hata oluştu' : error.message });
+    clearTimeout(timeout);
+    logger.error('Login hatası', { error: error.message });
+    const isDbTimeout = /timeout|ETIMEDOUT|ECONNREFUSED/i.test(error.message || '');
+    const errMsg = isDbTimeout ? 'Veritabanı yanıt vermiyor. PostgreSQL çalışıyor mu?' : (isProduction ? 'Giriş sırasında hata oluştu' : error.message);
+    res.status(500).json({ error: errMsg });
   }
 });
 
@@ -563,6 +576,20 @@ app.post('/api/login', async (req, res) => {
 app.post('/api/logout', (req, res) => {
   res.clearCookie('token', { path: '/' });
   res.json({ success: true });
+});
+
+// Token doğrulama - login sayfasında oturum kontrolü için
+app.get('/api/me', auth.verifyToken, async (req, res) => {
+  try {
+    const u = await db.getUserById(req.user.id);
+    if (!u || !u.aktif) return res.status(401).json({ error: 'Oturum geçersiz' });
+    const subeIdVal = u.subeId ?? u.subeid;
+    res.json({
+      user: { id: u.id, kullaniciAdi: u.kullaniciAdi, rol: u.rol, adSoyad: u.adSoyad, studentId: u.studentId ?? u.studentid, subeId: subeIdVal }
+    });
+  } catch (e) {
+    res.status(500).json({ error: safeErr(e.message) });
+  }
 });
 
 // Kullanıcıları getir (şube filtrelemeli) - limit varsa arama/sayfalama
@@ -574,7 +601,8 @@ app.get('/api/users', auth.requireAdminOrYonetici, async (req, res) => {
       const result = await db.searchUsers(subeId, {
         q: req.query.q || '',
         limit: Math.min(limit, 500),
-        offset: Math.max(0, safeParseId(req.query.offset) || 0)
+        offset: Math.max(0, safeParseId(req.query.offset) || 0),
+        rol: req.query.rol || null
       });
       res.json({ rows: result.rows, total: result.total });
     } else {
@@ -582,7 +610,7 @@ app.get('/api/users', auth.requireAdminOrYonetici, async (req, res) => {
       res.json(users);
     }
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -594,7 +622,7 @@ app.get('/api/users/:id', auth.requireAdminOrYonetici, async (req, res) => {
     const user = await db.getUserById(id);
     res.json(user);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -617,7 +645,7 @@ app.post('/api/users', auth.requireAdminOrYonetici, async (req, res) => {
     const { sifre, ...safeUser } = newUser;
     res.json({ success: true, user: safeUser });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -635,7 +663,7 @@ app.put('/api/users/:id', auth.requireAdminOrYonetici, async (req, res) => {
     const { sifre, ...safeUser } = updatedUser;
     res.json(safeUser);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -647,7 +675,7 @@ app.delete('/api/users/:id', auth.requireAdminOrYonetici, async (req, res) => {
     await db.deleteUser(id);
     res.json({ message: 'Kullanıcı silindi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -673,7 +701,7 @@ app.get('/api/payments', auth.requireAdminOrYonetici, async (req, res) => {
     const payments = await db.getAllPayments();
     res.json(payments);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -685,7 +713,7 @@ app.get('/api/payments/student/:studentId', auth.requireAdminOrYonetici, async (
     const payments = await db.getPaymentsByStudent(studentId);
     res.json(payments);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -696,7 +724,7 @@ app.post('/api/payments', auth.requireAdminOrYonetici, async (req, res) => {
     const payment = await db.addPayment(pickAllowed(req.body, PAYMENT_FIELDS));
     res.json(payment);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -708,7 +736,7 @@ app.delete('/api/payments/:id', auth.requireAdminOrYonetici, async (req, res) =>
     await db.deleteLegacyPayment(id);
     res.json({ message: 'Ödeme silindi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -729,7 +757,7 @@ app.get('/api/settings/:key', auth.requireAdminOrYonetici, async (req, res) => {
     const value = await db.getSetting(key);
     res.json({ key, value });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -741,7 +769,7 @@ app.put('/api/settings/:key', auth.requireAdminOrYonetici, async (req, res) => {
     const result = await db.updateSetting(key, req.body.value);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 // ============ GRUP YÖNETİMİ API ============
@@ -760,7 +788,7 @@ app.get('/api/groups', auth.requireStaff, async (req, res) => {
     
     res.json(groups);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -771,7 +799,7 @@ app.get('/api/groups/active', auth.requireStaff, async (req, res) => {
     const groups = await db.getActiveGroups(subeId);
     res.json(groups);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -789,7 +817,7 @@ app.post('/api/groups', auth.requireAdminOrYonetici, async (req, res) => {
     const newGroup = await db.createGroup(group);
     res.json(newGroup);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -808,7 +836,7 @@ app.put('/api/groups/:id', auth.requireAdminOrYonetici, async (req, res) => {
     const updatedGroup = await db.updateGroup(id, pickAllowed(req.body, GROUP_UPDATE_FIELDS));
     res.json(updatedGroup);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -827,7 +855,7 @@ app.put('/api/groups/:id/close', auth.requireAdminOrYonetici, async (req, res) =
     await db.closeGroup(id, kapatmaTarihi);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -839,7 +867,7 @@ app.get('/api/groups/:id/count', auth.requireStaff, async (req, res) => {
     const count = await db.getGroupStudentCount(id);
     res.json({ count });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -860,7 +888,7 @@ app.post('/api/groups/transfer', auth.requireAdminOrYonetici, async (req, res) =
     await db.transferStudentsToGroup(ids, gid);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -878,7 +906,7 @@ app.delete('/api/groups/:id', auth.requireAdminOrYonetici, async (req, res) => {
     await db.deleteGroup(id);
     res.json({ success: true, message: 'Grup silindi' });
   } catch (error) {
-    res.status(400).json({ error: safeErrorMsg(error.message) });
+    res.status(400).json({ error: safeErr(error.message) });
   }
 });
 // Öğrenci istatistikleri
@@ -888,7 +916,7 @@ app.get('/api/students/stats', auth.requireStaff, async (req, res) => {
     const stats = await db.getStudentStats(subeId);
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 // ============ ÖDEME DÖNEMLERİ API ============
@@ -900,7 +928,18 @@ app.get('/api/periods', auth.requireStaff, async (req, res) => {
     const periods = await db.getAllPeriods(subeId);
     res.json(periods);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+// Her şubenin kendi son N döneminin ID'lerini getir (admin tüm şubeler toplamı için)
+app.get('/api/periods/last-per-sube', auth.requireAdminOrYonetici, async (req, res) => {
+  try {
+    const count = Math.max(1, safeParseId(req.query.count) || 1);
+    const result = await db.getLastNPeriodIdsPerSube(count);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -918,7 +957,7 @@ app.post('/api/periods', auth.requireAdminOrYonetici, async (req, res) => {
     const newPeriod = await db.createPeriod(period);
     res.json(newPeriod);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -931,7 +970,7 @@ app.put('/api/periods/:id', auth.requireAdminOrYonetici, async (req, res) => {
     const updatedPeriod = await db.updatePeriod(id, pickAllowed(req.body, PERIOD_UPDATE_FIELDS));
     res.json(updatedPeriod);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -943,7 +982,7 @@ app.delete('/api/periods/:id', auth.requireAdminOrYonetici, async (req, res) => 
     await db.deletePeriod(id);
     res.json({ success: true, message: 'Dönem silindi' });
   } catch (error) {
-    res.status(400).json({ error: safeErrorMsg(error.message) });
+    res.status(400).json({ error: safeErr(error.message) });
   }
 });
 
@@ -955,7 +994,7 @@ app.post('/api/periods/:id/activate', auth.requireAdminOrYonetici, async (req, r
     const result = await db.activatePeriod(id);
     res.json({ success: true, message: `${result.count} öğrenci için borç oluşturuldu` });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -973,7 +1012,7 @@ app.get('/api/students/:studentId/period-payments', async (req, res) => {
     const payments = await db.getStudentPeriodPayments(studentId);
     res.json(payments);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -991,30 +1030,37 @@ app.get('/api/period-payments/stats', auth.requireStaff, async (req, res) => {
     const stats = await db.getPeriodPaymentStats(periodIds, subeId);
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
 // Öğrencilerin dönem ödemelerini getir - limit varsa arama/sayfalama
+// periodIds: virgülle ayrılmış ID listesi (admin her şubenin son N dönemi toplamı için)
 app.get('/api/period-payments', auth.requireStaff, async (req, res) => {
   try {
     const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
     const limit = safeParseId(req.query.limit);
+    let periodIds = null;
+    const periodIdsStr = req.query.periodIds;
+    if (periodIdsStr && typeof periodIdsStr === 'string') {
+      periodIds = periodIdsStr.split(',').map(id => safeParseId(id.trim())).filter(Boolean);
+    }
     if (limit && limit > 0) {
       const result = await db.searchStudentPeriodPayments(subeId, {
         q: req.query.q || '',
         limit: Math.min(limit, 500),
         offset: Math.max(0, safeParseId(req.query.offset) || 0),
         periodId: safeQueryId(req.query.periodId),
+        periodIds,
         odemeDurumu: req.query.odemeDurumu || null
       });
       res.json({ rows: result.rows, total: result.total });
     } else {
-      const payments = await db.getAllStudentPeriodPayments(subeId);
+      const payments = await db.getAllStudentPeriodPayments(subeId, periodIds);
       res.json(payments);
     }
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1040,7 +1086,7 @@ app.post('/api/period-payments/:id/pay', auth.requireAdminOrYonetici, async (req
     }
     res.json({ success: true, message: 'Ödeme kaydedildi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 // Ödeme güncelle
@@ -1052,7 +1098,7 @@ app.put('/api/period-payments/:id', auth.requireAdminOrYonetici, async (req, res
     await db.updatePayment(id, pickAllowed(req.body, UPDATE_PAYMENT_FIELDS));
     res.json({ success: true, message: 'Ödeme güncellendi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1065,7 +1111,7 @@ app.delete('/api/period-payments/:id', auth.requireAdminOrYonetici, async (req, 
     await db.deleteIncomeByPaymentId(id);
     res.json({ success: true, message: 'Ödeme silindi' });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 // Ödeme makbuzu PDF içeriğini çiz (ortak fonksiyon - Türkçe karakter + modern tasarım)
@@ -1141,7 +1187,7 @@ app.get('/api/period-payments/:id/receipt', auth.requireAdminOrYonetici, async (
     renderReceiptContent(doc, payment);
     doc.end();
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1175,7 +1221,7 @@ app.get('/api/period-payments/:id/receipt-info', auth.requireAdminOrYonetici, as
       periodName: payment.donemAdi
     });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1198,7 +1244,7 @@ async function sendSms(gsmno, message) {
     const text = await res.text();
     return text.startsWith('00') || text.startsWith('01') || text.startsWith('02');
   } catch (e) {
-    console.error('SMS gönderme hatası:', e.message);
+    logger.error('SMS gönderme hatası', { error: e.message });
     return false;
   }
 }
@@ -1255,7 +1301,7 @@ app.post('/api/period-payments/:id/send-receipt-email', auth.requireAdminOrYonet
 
     res.json({ success: true, emailSent, smsSent, message });
   } catch (error) {
-    console.error('Makbuz gönderme hatası:', error.message);
+    logger.error('Makbuz gönderme hatası', { error: error.message });
     res.status(500).json({ error: 'Makbuz gönderilemedi. Lütfen ayarları kontrol edin.' });
   }
 });
@@ -1381,8 +1427,8 @@ app.get('/api/groups/attendance-pdf', auth.requireStaff, async (req, res) => {
     doc.end();
     
   } catch (error) {
-    console.error('Yoklama PDF hatası:', error);
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    logger.error('Yoklama PDF hatası', { error: error.message });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1398,7 +1444,7 @@ app.get('/api/attendance', auth.requireStaff, async (req, res) => {
     const entries = await db.getAttendanceEntries(groupId, date);
     res.json({ entries });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1416,7 +1462,7 @@ app.post('/api/attendance', auth.requireStaff, async (req, res) => {
     });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1436,7 +1482,7 @@ app.get('/api/reports/attendance', auth.requireAdminOrYonetici, async (req, res)
     );
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1455,7 +1501,7 @@ app.get('/api/reports/attendance-monthly', auth.requireAdminOrYonetici, async (r
     );
     res.json({ rows });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1474,7 +1520,7 @@ app.get('/api/tests/student/:studentId', async (req, res) => {
     const sessions = await db.getStudentTests(studentId);
     res.json(sessions);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1497,7 +1543,7 @@ app.post('/api/tests', auth.requireAdminOrYonetici, async (req, res) => {
     });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1513,7 +1559,7 @@ app.get('/api/tests/averages', auth.requireAdminOrYonetici, async (req, res) => 
     );
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1527,7 +1573,7 @@ app.get('/api/parent-notes/:parentUserId', auth.requireParentNotesAccess, async 
     const notes = await db.getParentNotes(parentUserId);
     res.json(notes);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1541,7 +1587,7 @@ app.post('/api/parent-notes', async (req, res) => {
     const note = await db.addParentNote(body);
     res.json(note);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1557,7 +1603,7 @@ app.delete('/api/parent-notes/:id', async (req, res) => {
     await db.deleteParentNote(id);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1573,7 +1619,7 @@ app.get('/api/parent/:parentUserId/students', auth.requireOwnParent, async (req,
     const parentStudents = await db.getStudentsByParentUserId(parentUserId);
     res.json(parentStudents);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1591,7 +1637,7 @@ app.get('/api/parent/:parentUserId/students/:studentId/attendance', auth.require
     const data = await db.getStudentAttendance(studentId, days);
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1603,7 +1649,7 @@ app.get('/api/subeler', auth.requireStaff, async (req, res) => {
     const subeler = await db.getAllSubeler();
     res.json(subeler);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1613,7 +1659,7 @@ app.get('/api/subeler/active', auth.requireStaff, async (req, res) => {
     const subeler = await db.getActiveSubeler();
     res.json(subeler);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1625,7 +1671,7 @@ app.get('/api/subeler/:id', auth.requireStaff, async (req, res) => {
     const sube = await db.getSubeById(id);
     res.json(sube);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1636,7 +1682,7 @@ app.post('/api/subeler', auth.requireAdmin, async (req, res) => {
     const sube = await db.createSube(pickAllowed(req.body, SUBE_CREATE_FIELDS));
     res.json(sube);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1649,7 +1695,7 @@ app.put('/api/subeler/:id', auth.requireAdmin, async (req, res) => {
     const sube = await db.updateSube(id, pickAllowed(req.body, SUBE_UPDATE_FIELDS));
     res.json(sube);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1661,7 +1707,7 @@ app.put('/api/subeler/:id/toggle', auth.requireAdmin, async (req, res) => {
     await db.toggleSubeStatus(id);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1673,7 +1719,7 @@ app.delete('/api/subeler/:id', auth.requireAdmin, async (req, res) => {
     await db.deleteSube(id);
     res.json({ success: true, message: 'Şube silindi' });
   } catch (error) {
-    res.status(400).json({ error: safeErrorMsg(error.message) });
+    res.status(400).json({ error: safeErr(error.message) });
   }
 });
 // Şube istatistikleri
@@ -1684,31 +1730,45 @@ app.get('/api/subeler/:id/stats', auth.requireStaff, async (req, res) => {
     const stats = await db.getSubeStats(id);
     res.json(stats);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
 // Raporlama - özet
+// Admin subeId olmadan: her şubenin kendi son N dönemi birleştirilmiş
 app.get('/api/reports/summary', auth.requireAdminOrYonetici, async (req, res) => {
   try {
     const range = req.query.range || 'periods';
     const count = Math.max(1, safeParseId(req.query.count) || 1);
     const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
+    const isAdminAllSubeler = req.user.rol === 'admin' && !subeId;
 
     let startDate;
     let endDate;
     let selectedPeriods = [];
+    let periodIds = [];
 
     if (range === 'year') {
       endDate = new Date();
       startDate = new Date();
       startDate.setFullYear(endDate.getFullYear() - 1);
+    } else if (isAdminAllSubeler) {
+      const lastPerSube = await db.getLastNPeriodIdsPerSube(count);
+      periodIds = lastPerSube.periodIds || [];
+      selectedPeriods = lastPerSube.selectedPeriods || [];
+      if (lastPerSube.startDate && lastPerSube.endDate) {
+        startDate = new Date(lastPerSube.startDate);
+        endDate = new Date(lastPerSube.endDate);
+      } else {
+        endDate = new Date();
+        startDate = new Date();
+        startDate.setFullYear(endDate.getFullYear() - 1);
+      }
     } else {
       const periods = await db.getAllPeriods(subeId);
       const sorted = [...periods].sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi));
       selectedPeriods = sorted.slice(0, Math.max(1, count));
       if (selectedPeriods.length === 0) {
-        // Dönem yoksa son 1 yıl kullan
         endDate = new Date();
         startDate = new Date();
         startDate.setFullYear(endDate.getFullYear() - 1);
@@ -1719,15 +1779,14 @@ app.get('/api/reports/summary', auth.requireAdminOrYonetici, async (req, res) =>
     }
 
     const result = await db.getReportSummary(
-      subeId,
+      isAdminAllSubeler ? null : subeId,
       startDate.toISOString(),
       endDate.toISOString()
     );
 
-    // Dönem ödeme özeti
-    if (selectedPeriods.length > 0) {
-      const periodIds = selectedPeriods.map(p => p.id);
-      result.paymentStats = await db.getPeriodPaymentStats(periodIds, subeId);
+    if (periodIds.length > 0 || selectedPeriods.length > 0) {
+      const ids = periodIds.length > 0 ? periodIds : selectedPeriods.map(p => p.id);
+      result.paymentStats = await db.getPeriodPaymentStats(ids, isAdminAllSubeler ? null : subeId);
     } else {
       result.paymentStats = { totalOdenen: 0, totalBorclu: 0, odenenSayisi: 0, borcluSayisi: 0 };
     }
@@ -1742,7 +1801,7 @@ app.get('/api/reports/summary', auth.requireAdminOrYonetici, async (req, res) =>
     result.dateRange = { start: startDate.toISOString().split('T')[0], end: endDate.toISOString().split('T')[0] };
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1758,7 +1817,7 @@ app.get('/api/reports/student-period-stats', auth.requireAdminOrYonetici, async 
     const result = await db.getStudentPeriodStats(subeId, start, end);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1815,7 +1874,7 @@ app.get('/api/reports/instructor', auth.requireStaff, async (req, res) => {
     );
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1825,6 +1884,7 @@ app.get('/api/reports/pdf', auth.requireAdminOrYonetici, async (req, res) => {
     const range = req.query.range || 'periods';
     const count = Math.max(1, safeParseId(req.query.count) || 1);
     const subeId = req.effectiveSubeId ?? safeQueryId(req.query.subeId);
+    const isAdminAllSubeler = req.user.rol === 'admin' && !subeId;
 
     let startDate;
     let endDate;
@@ -1835,6 +1895,15 @@ app.get('/api/reports/pdf', auth.requireAdminOrYonetici, async (req, res) => {
       startDate = new Date();
       startDate.setFullYear(endDate.getFullYear() - 1);
       titleRange = 'Son 1 Yıl';
+    } else if (isAdminAllSubeler) {
+      const lastPerSube = await db.getLastNPeriodIdsPerSube(count);
+      if (lastPerSube.startDate && lastPerSube.endDate) {
+        startDate = new Date(lastPerSube.startDate);
+        endDate = new Date(lastPerSube.endDate);
+      } else {
+        return res.status(404).json({ error: 'Dönem bulunamadı' });
+      }
+      titleRange = count === 1 ? 'Son Dönem (Tüm Şubeler)' : `Son ${count} Dönem (Tüm Şubeler)`;
     } else {
       const periods = await db.getAllPeriods(subeId);
       const sorted = [...periods].sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi));
@@ -1848,7 +1917,7 @@ app.get('/api/reports/pdf', auth.requireAdminOrYonetici, async (req, res) => {
     }
 
     const data = await db.getReportSummary(
-      subeId,
+      isAdminAllSubeler ? null : subeId,
       startDate.toISOString(),
       endDate.toISOString()
     );
@@ -1904,7 +1973,7 @@ app.get('/api/reports/pdf', auth.requireAdminOrYonetici, async (req, res) => {
 
     doc.end();
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1917,7 +1986,7 @@ app.get('/api/accounting/incomes', auth.requireAdminOrYonetici, async (req, res)
     const data = await db.getIncomes(subeId, start, end);
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1933,7 +2002,7 @@ app.post('/api/accounting/incomes', auth.requireAdminOrYonetici, async (req, res
     const result = await db.addIncome(income);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1946,7 +2015,7 @@ app.get('/api/accounting/expenses', auth.requireAdminOrYonetici, async (req, res
     const data = await db.getExpenses(subeId, start, end);
     res.json(data);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1962,7 +2031,7 @@ app.post('/api/accounting/expenses', auth.requireAdminOrYonetici, async (req, re
     const result = await db.addExpense(expense);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1974,7 +2043,7 @@ app.put('/api/accounting/expenses/:id', auth.requireAdminOrYonetici, async (req,
     const result = await db.updateExpense(id, pickAllowed(req.body, EXPENSE_UPDATE_FIELDS));
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1985,7 +2054,7 @@ app.delete('/api/accounting/expenses/:id', auth.requireAdminOrYonetici, async (r
     const result = await db.deleteExpense(id);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -1998,7 +2067,7 @@ app.post('/api/students/:id/create-debts', auth.requireAdminOrYonetici, async (r
     await db.createProportionalDebtsForReturningStudent(studentId, bugun);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: safeErrorMsg(error.message) });
+    res.status(500).json({ error: safeErr(error.message) });
   }
 });
 
@@ -2009,7 +2078,7 @@ app.use('/api', (req, res) => {
 
 // Global hata yakalayıcı (yakalanmamış hatalar)
 app.use((err, req, res, next) => {
-  console.error('Yakalanmamış hata:', err);
+  logger.error('Yakalanmamış hata', { error: err.message, stack: err.stack });
   res.status(500).json({ error: isProduction ? 'Sunucu hatası' : (err.message || 'Bilinmeyen hata') });
 });
 
@@ -2025,7 +2094,7 @@ async function checkAndActivatePeriods() {
       }
     }
   } catch (error) {
-    console.error('Dönem kontrolünde hata:', error);
+    logger.error('Dönem kontrolünde hata', { error: error.message });
   }
 }
 
@@ -2044,22 +2113,25 @@ function validateProductionConfig() {
   }
 }
 
-(async () => {
-  try {
-    validateProductionConfig();
-    await db.init();
+async function startServer() {
+  validateProductionConfig();
+  const usePg = !!process.env.DATABASE_URL && process.env.USE_SQLITE !== 'true' && process.env.USE_SQLITE !== '1';
+  console.log(usePg ? 'PostgreSQL bağlanıyor...' : 'SQLite hazırlanıyor...');
+  await db.init();
+  checkAndActivatePeriods();
+  setInterval(checkAndActivatePeriods, 3600000);
+  app.listen(port, () => {
+    console.log(`\nFutbol Okulu sunucusu http://localhost:${port} adresinde çalışıyor`);
+    console.log(usePg ? '✅ PostgreSQL aktif' : '✅ SQLite aktif');
+  });
+}
 
-    // Dönem kontrolünü init'ten SONRA yap (DB hazır olmalı)
-    checkAndActivatePeriods();
-    setInterval(checkAndActivatePeriods, 3600000);
-
-    app.listen(port, () => {
-      console.log(`Futbol Okulu sunucusu http://localhost:${port} adresinde çalışıyor`);
-      const dbType = (process.env.USE_SQLITE === 'true' || process.env.USE_SQLITE === '1') ? 'SQLite' : (process.env.DATABASE_URL ? 'PostgreSQL' : 'SQLite');
-      console.log(`✅ ${dbType} veritabanı aktif`);
-    });
-  } catch (err) {
-    console.error('Sunucu başlatma hatası:', err.message);
+if (require.main === module && process.env.NODE_ENV !== 'test') {
+  startServer().catch((err) => {
+    console.error('\nHATA:', err.message);
+    if (process.env.DATABASE_URL) console.error('PostgreSQL teşhis: npm run pg:check');
     process.exit(1);
-  }
-})();
+  });
+}
+
+module.exports = app;

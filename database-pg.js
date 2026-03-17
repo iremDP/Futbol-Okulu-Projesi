@@ -5,16 +5,43 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const { normalizeRows, normalizeRow } = require('./pg-normalize');
 
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL || typeof DATABASE_URL !== 'string' || !DATABASE_URL.trim()) {
+  throw new Error('DATABASE_URL ortam değişkeni tanımlı değil. .env dosyasında postgresql://... formatında ayarlayın.');
+}
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 10,
-  idleTimeoutMillis: 10000,
-  connectionTimeoutMillis: 5000
+  connectionString: DATABASE_URL.trim(),
+  max: 15,
+  idleTimeoutMillis: 20000,
+  connectionTimeoutMillis: 10000,
+  statement_timeout: 15000 // 15 sn - takılmayı önler
 });
 
 pool.on('error', (err) => {
   console.error('PostgreSQL pool hatası:', err.message);
 });
+
+/** Bağlantı hatasını kullanıcı dostu mesaja çevir */
+function formatConnectionError(err) {
+  const msg = (err && err.message) || String(err);
+  if (/password authentication failed/i.test(msg)) {
+    return 'PostgreSQL şifresi yanlış. .env dosyasında DATABASE_URL içindeki şifreyi kontrol edin.\n  Örnek: postgresql://postgres:SIZIN_SIFRENIZ@localhost:5432/futbol_okulu';
+  }
+  if (/ECONNREFUSED|connect.*refused/i.test(msg)) {
+    return 'PostgreSQL servisine bağlanılamadı. Servis çalışıyor mu?\n  Windows: Services > postgresql-x64-16 > Start\n  Veya: pg_ctl -D "C:\\Program Files\\PostgreSQL\\16\\data" start';
+  }
+  if (/ETIMEDOUT|timeout/i.test(msg)) {
+    return 'PostgreSQL bağlantı zaman aşımı. Sunucu erişilebilir mi? Port 5432 açık mı?';
+  }
+  if (/database.*does not exist/i.test(msg)) {
+    return 'futbol_okulu veritabanı yok. Önce: npm run pg:setup';
+  }
+  if (/role.*does not exist/i.test(msg)) {
+    return 'PostgreSQL kullanıcısı bulunamadı. DATABASE_URL\'deki kullanıcı adını kontrol edin (genelde postgres).';
+  }
+  return msg;
+}
 
 function normRows(rows) {
   return rows ? normalizeRows(rows) : rows;
@@ -54,19 +81,101 @@ async function ensureReady() {
   return initPromise;
 }
 
-async function init() {
-  const client = await pool.connect();
+async function createMissingParentUsers() {
   try {
-    await createSchema(client);
-    await ensureIndexes(client);
-    await migratePasswordsToHash(client);
-    await ensureAdminUser(client);
-  } finally {
-    client.release();
+    const res = await pool.query(`
+      SELECT s.id, s.veliadi, s.tcno, s.velitelefon1, s.email FROM students s
+      WHERE NOT EXISTS (SELECT 1 FROM users u WHERE u.rol = 'veli' AND u.studentid = s.id)
+    `);
+    let created = 0;
+    for (const st of res.rows) {
+      const kullaniciAdi = st.tcNo || st.tcno || ('veli' + st.id);
+      const check = await pool.query('SELECT id FROM users WHERE kullaniciadi = $1', [kullaniciAdi]);
+      if (check.rows.length > 0) continue;
+      const sifre = st.tcNo || st.tcno || crypto.randomBytes(4).toString('hex');
+      const studentRes = await pool.query('SELECT subeid FROM students WHERE id = $1', [st.id]);
+      const subeId = studentRes.rows[0]?.subeid ?? studentRes.rows[0]?.subeId ?? null;
+      const hashedSifre = await bcrypt.hash(sifre, 10);
+      const veliAdi = st.veliAdi || st.veliadi || 'Veli';
+      const telefon = st.veliTelefon1 || st.velitelefon1 || '';
+      await pool.query(`
+        INSERT INTO users (kullaniciadi, sifre, rol, adsoyad, telefon, email, studentid, subeid, aktif, olusturmatarihi)
+        VALUES ($1, $2, 'veli', $3, $4, $5, $6, $7, 1, $8)
+      `, [kullaniciAdi, hashedSifre, veliAdi, telefon || null, st.email || null, st.id, subeId, new Date().toISOString()]);
+      created++;
+    }
+    if (created > 0) console.log('Eksik veli oluşturuldu:', created);
+  } catch (e) {
+    console.error('Eksik veli oluşturma hatası:', e.message);
   }
 }
 
-async function ensureIndexes(client) {
+async function backfillSubeIds() {
+  const yield = () => new Promise(r => setImmediate(r));
+  try {
+    await createMissingParentUsers();
+    await yield();
+    await pool.query(`UPDATE groups SET subeid = (SELECT subeid FROM users WHERE id = groups.instructorid AND subeid IS NOT NULL) WHERE subeid IS NULL AND instructorid IS NOT NULL`);
+    await yield();
+    await pool.query(`UPDATE students SET subeid = (SELECT subeid FROM groups WHERE id = students.groupid AND subeid IS NOT NULL) WHERE subeid IS NULL AND groupid IS NOT NULL`);
+    await yield();
+    await pool.query(`UPDATE students s SET subeid = (SELECT u.subeid FROM groups g JOIN users u ON g.instructorid = u.id WHERE g.id = s.groupid AND u.subeid IS NOT NULL) WHERE s.subeid IS NULL AND s.groupid IS NOT NULL`);
+    await yield();
+    await pool.query(`UPDATE users SET subeid = (SELECT subeid FROM students WHERE id = users.studentid AND subeid IS NOT NULL) WHERE rol = 'veli' AND studentid IS NOT NULL`);
+    await yield();
+    await pool.query(`UPDATE users u SET subeid = (SELECT COALESCE(s.subeid, g.subeid, u2.subeid) FROM students s LEFT JOIN groups g ON s.groupid = g.id LEFT JOIN users u2 ON g.instructorid = u2.id WHERE s.id = u.studentid AND (s.subeid IS NOT NULL OR g.subeid IS NOT NULL OR u2.subeid IS NOT NULL) LIMIT 1) WHERE u.rol = 'veli' AND u.studentid IS NOT NULL AND u.subeid IS NULL`);
+  } catch (e) {
+    console.error('subeId backfill hatası:', e.message);
+  }
+}
+
+async function init() {
+  process.stdout.write('PostgreSQL baglaniyor... ');
+  let client;
+  try {
+    client = await pool.connect();
+    await client.query('SELECT 1');
+    client.release();
+    process.stdout.write('OK\n');
+  } catch (e) {
+    if (client) try { client.release(); } catch (_) {}
+    const friendly = formatConnectionError(e);
+    console.error('\n\n>>> PostgreSQL baglanti HATASI <<<\n');
+    console.error(friendly);
+    console.error('\nKontrol: npm run pg:check');
+    throw new Error(friendly);
+  }
+
+  process.stdout.write('Sema kontrol ediliyor... ');
+  const schemaTimeout = 45000; // 45 sn
+  try {
+    await Promise.race([
+      createSchema(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Sema 45 sn icinde tamamlanamadi. Veritabani kilitli olabilir - pgAdmin veya baska bir baglanti acik mi?')), schemaTimeout)
+      )
+    ]);
+    process.stdout.write('OK\n');
+  } catch (e) {
+    console.error('\n\n>>> Sema hatasi <<<\n', formatConnectionError(e));
+    throw e;
+  }
+
+  process.stdout.write('Indexler... ');
+  await ensureIndexes();
+  process.stdout.write('OK\n');
+  process.stdout.write('Admin kullanici... ');
+  await Promise.race([
+    ensureAdminUser(),
+    new Promise((_, r) => setTimeout(() => r(new Error('Admin 15sn timeout - pgAdmin veya baska baglanti kapatip tekrar deneyin')), 15000))
+  ]);
+  process.stdout.write('OK\n');
+  // Sifre migration 20 sn sonra baslasin - ilk giris bloke olmasin
+  setTimeout(() => migratePasswordsToHash().catch(e => console.error('Sifre migration:', e.message)), 20000);
+  // Backfill kapalı - takılmaya neden oluyordu. Gerekirse: npm run pg:backfill
+}
+
+async function ensureIndexes() {
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_students_subeId ON students(subeId)',
     'CREATE INDEX IF NOT EXISTS idx_students_durum ON students(durum)',
@@ -80,14 +189,24 @@ async function ensureIndexes(client) {
     'CREATE INDEX IF NOT EXISTS idx_spp_periodId ON student_period_payments(periodId)',
     'CREATE INDEX IF NOT EXISTS idx_spp_odemeDurumu ON student_period_payments(odemeDurumu)'
   ];
-  for (const sql of indexes) {
-    await client.query(sql).catch(() => {});
+  const client = await pool.connect();
+  try {
+    await client.query("SET statement_timeout = '15s'");
+    for (const sql of indexes) {
+      await client.query(sql).catch(() => {});
+    }
+  } finally {
+    client.release();
   }
 }
 
-async function createSchema(client) {
+async function createSchema() {
+  const client = await pool.connect();
+  const q = (sql, params) => client.query(sql, params);
+  try {
+    await client.query("SET statement_timeout = '30s'");
   // Students
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS students (
       id SERIAL PRIMARY KEY,
       ad TEXT NOT NULL,
@@ -111,7 +230,7 @@ async function createSchema(client) {
   `);
 
   // Subeler
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS subeler (
       id SERIAL PRIMARY KEY,
       subeAdi TEXT UNIQUE NOT NULL,
@@ -122,7 +241,7 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     INSERT INTO subeler (subeAdi, aktif, olusturmaTarihi)
     VALUES ('Meydan Şube', 1, NOW()::text),
            ('Liman Şube', 1, NOW()::text),
@@ -131,7 +250,7 @@ async function createSchema(client) {
   `);
 
   // Users (must exist before groups due to FK)
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       kullaniciAdi TEXT UNIQUE NOT NULL,
@@ -149,7 +268,7 @@ async function createSchema(client) {
   `);
 
   // Groups (with subeId and instructorId, FK to users)
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS groups (
       id SERIAL PRIMARY KEY,
       groupName TEXT NOT NULL,
@@ -164,11 +283,11 @@ async function createSchema(client) {
   `).catch(() => {});
 
   // Add columns if groups existed from older schema
-  await client.query(`ALTER TABLE groups ADD COLUMN IF NOT EXISTS subeId INTEGER`).catch(() => {});
-  await client.query(`ALTER TABLE groups ADD COLUMN IF NOT EXISTS instructorId INTEGER`).catch(() => {});
+  await q(`ALTER TABLE groups ADD COLUMN IF NOT EXISTS subeId INTEGER`).catch(() => {});
+  await q(`ALTER TABLE groups ADD COLUMN IF NOT EXISTS instructorId INTEGER`).catch(() => {});
 
   // Payments
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS payments (
       id SERIAL PRIMARY KEY,
       studentId INTEGER NOT NULL,
@@ -184,7 +303,7 @@ async function createSchema(client) {
   `);
 
   // Settings
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS settings (
       id SERIAL PRIMARY KEY,
       anahtar TEXT UNIQUE NOT NULL,
@@ -192,13 +311,13 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     INSERT INTO settings (anahtar, deger) VALUES ('donemUcreti', '3400'), ('donemSuresi', '28')
     ON CONFLICT (anahtar) DO NOTHING
   `);
 
   // Payment periods
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS payment_periods (
       id SERIAL PRIMARY KEY,
       donemAdi TEXT NOT NULL,
@@ -211,12 +330,12 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     ALTER TABLE payment_periods ADD COLUMN IF NOT EXISTS subeId INTEGER
   `).catch(() => {});
 
   // Student period payments
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS student_period_payments (
       id SERIAL PRIMARY KEY,
       studentId INTEGER NOT NULL,
@@ -233,7 +352,7 @@ async function createSchema(client) {
   `);
 
   // Parent notes
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS parent_notes (
       id SERIAL PRIMARY KEY,
       parentUserId INTEGER,
@@ -248,7 +367,7 @@ async function createSchema(client) {
   `);
 
   // Attendance
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS attendance_sessions (
       id SERIAL PRIMARY KEY,
       groupId INTEGER NOT NULL,
@@ -261,7 +380,7 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS attendance_entries (
       id SERIAL PRIMARY KEY,
       sessionId INTEGER NOT NULL,
@@ -275,7 +394,7 @@ async function createSchema(client) {
   `);
 
   // Test sessions
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS test_sessions (
       id SERIAL PRIMARY KEY,
       studentId INTEGER NOT NULL,
@@ -293,7 +412,7 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS test_metrics (
       id SERIAL PRIMARY KEY,
       sessionId INTEGER NOT NULL,
@@ -308,7 +427,7 @@ async function createSchema(client) {
   `);
 
   // Accounting
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS accounting_incomes (
       id SERIAL PRIMARY KEY,
       subeId INTEGER,
@@ -323,7 +442,7 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS accounting_expenses (
       id SERIAL PRIMARY KEY,
       subeId INTEGER,
@@ -337,7 +456,7 @@ async function createSchema(client) {
   `);
 
   // Student status history
-  await client.query(`
+  await q(`
     CREATE TABLE IF NOT EXISTS student_status_history (
       id SERIAL PRIMARY KEY,
       studentId INTEGER NOT NULL,
@@ -352,55 +471,63 @@ async function createSchema(client) {
     )
   `);
 
-  await client.query(`
+  await q(`
     ALTER TABLE student_status_history ADD COLUMN IF NOT EXISTS groupId INTEGER
   `).catch(() => {});
 
-  await client.query(`
+  await q(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS subeId INTEGER
   `).catch(() => {});
+  } finally {
+    client.release();
+  }
 }
 
 async function migratePasswordsToHash(client) {
   try {
-    const res = await client.query('SELECT id, sifre FROM users');
+    const res = await pool.query('SELECT id, sifre FROM users WHERE sifre IS NOT NULL AND sifre != \'\' AND sifre NOT LIKE \'$2%\'');
+    if (res.rows.length === 0) return;
     for (const u of res.rows) {
-      if (u.sifre && !u.sifre.startsWith('$2')) {
-        const hash = bcrypt.hashSync(u.sifre, 10);
-        await client.query('UPDATE users SET sifre = $1 WHERE id = $2', [hash, u.id]);
-      }
+      const hash = await bcrypt.hash(u.sifre, 10);
+      await pool.query('UPDATE users SET sifre = $1 WHERE id = $2', [hash, u.id]);
     }
   } catch (e) {
     console.error('Şifre migration hatası:', e.message);
   }
 }
 
-async function ensureAdminUser(client) {
-  const check = await client.query("SELECT id, sifre FROM users WHERE kullaniciAdi = 'admin'");
-  if (check.rows.length > 0) {
-    const admin = check.rows[0];
-    const flagCheck = await client.query("SELECT deger FROM settings WHERE anahtar = 'admin_initial_password_hash'");
-    if (flagCheck.rows.length === 0) {
-      await client.query(`
-        INSERT INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', $1)
-        ON CONFLICT (anahtar) DO UPDATE SET deger = $1
-      `, [admin.sifre]);
+async function ensureAdminUser() {
+  const client = await pool.connect();
+  try {
+    await client.query("SET statement_timeout = '10s'");
+    const check = await client.query("SELECT id, sifre FROM users WHERE kullaniciadi = 'admin'");
+    if (check.rows.length > 0) {
+      const admin = check.rows[0];
+      const flagCheck = await client.query("SELECT deger FROM settings WHERE anahtar = 'admin_initial_password_hash'");
+      if (flagCheck.rows.length === 0) {
+        await client.query(`
+          INSERT INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', $1)
+          ON CONFLICT (anahtar) DO UPDATE SET deger = $1
+        `, [admin.sifre]);
+      }
+      return;
     }
-    return;
+    const randomPw = crypto.randomBytes(12).toString('base64url');
+    const adminHash = await bcrypt.hash(randomPw, 10);
+    await client.query(`
+      INSERT INTO users (kullaniciadi, sifre, rol, adsoyad, telefon, aktif, olusturmatarihi)
+      VALUES ('admin', $1, 'admin', 'Sistem Yöneticisi', '', 1, NOW()::text)
+    `, [adminHash]);
+    await client.query(`
+      INSERT INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', $1)
+      ON CONFLICT (anahtar) DO UPDATE SET deger = $1
+    `, [adminHash]);
+    const credPath = path.join(__dirname, 'admin-initial-credentials.txt');
+    fs.writeFileSync(credPath, `Futbol Okulu - İlk Giriş Bilgileri\n${'='.repeat(40)}\nKullanıcı: admin\nŞifre: ${randomPw}\n\n⚠️ İlk girişte şifreyi değiştirin ve bu dosyayı silin!\n`);
+    console.log('⚠️ Admin oluşturuldu. Şifre: admin-initial-credentials.txt');
+  } finally {
+    client.release();
   }
-  const randomPw = crypto.randomBytes(12).toString('base64url');
-  const adminHash = bcrypt.hashSync(randomPw, 10);
-  await client.query(`
-    INSERT INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, aktif, olusturmaTarihi)
-    VALUES ('admin', $1, 'admin', 'Sistem Yöneticisi', '', 1, NOW()::text)
-  `, [adminHash]);
-  await client.query(`
-    INSERT INTO settings (anahtar, deger) VALUES ('admin_initial_password_hash', $1)
-    ON CONFLICT (anahtar) DO UPDATE SET deger = $1
-  `, [adminHash]);
-  const credPath = path.join(__dirname, 'admin-initial-credentials.txt');
-  fs.writeFileSync(credPath, `Futbol Okulu - İlk Giriş Bilgileri\n${'='.repeat(40)}\nKullanıcı: admin\nŞifre: ${randomPw}\n\n⚠️ İlk girişte şifreyi değiştirin ve bu dosyayı silin!\n`);
-  console.log('⚠️ Admin oluşturuldu. Şifre: admin-initial-credentials.txt');
 }
 
 // ============ ÖĞRENCİ FONKSİYONLARI ============
@@ -496,7 +623,7 @@ async function addStudent(student) {
   await ensureReady();
   const client = await pool.connect();
   try {
-    const res = await client.query(`
+    const res = await pool.query(`
       INSERT INTO students (ad, soyad, tcNo, dogumTarihi, veliAdi, email, veliTelefon1, veliTelefon2, mahalle, okul, kayitKaynagi, kayitTarihi, groupId, subeId)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING id
@@ -522,12 +649,12 @@ async function createParentUser(client, studentId, veliAdi, tcNo, telefon, email
   try {
     const kullaniciAdi = tcNo || ('veli' + studentId);
     const sifre = tcNo || crypto.randomBytes(4).toString('hex');
-    const existing = await client.query('SELECT id FROM users WHERE kullaniciAdi = $1', [kullaniciAdi]);
+    const existing = await pool.query('SELECT id FROM users WHERE kullaniciadi = $1', [kullaniciAdi]);
     if (existing.rows.length > 0) return null;
-    const studentRes = await client.query('SELECT subeId FROM students WHERE id = $1', [studentId]);
-    const subeId = studentRes.rows[0]?.subeId || null;
-    const hashedSifre = bcrypt.hashSync(sifre, 10);
-    const res = await client.query(`
+    const studentRes = await pool.query('SELECT subeid FROM students WHERE id = $1', [studentId]);
+    const subeId = studentRes.rows[0]?.subeid ?? studentRes.rows[0]?.subeId ?? null;
+    const hashedSifre = await bcrypt.hash(sifre, 10);
+    const res = await pool.query(`
       INSERT INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, email, studentId, subeId, aktif, olusturmaTarihi)
       VALUES ($1, $2, 'veli', $3, $4, $5, $6, $7, 1, $8)
       RETURNING id
@@ -541,15 +668,15 @@ async function createParentUser(client, studentId, veliAdi, tcNo, telefon, email
 
 async function createProportionalDebtsForNewStudent(client, studentId, kayitTarihi) {
   try {
-    const studentRes = await client.query('SELECT subeId FROM students WHERE id = $1', [studentId]);
+    const studentRes = await pool.query('SELECT subeId FROM students WHERE id = $1', [studentId]);
     const student = studentRes.rows[0];
     let query = "SELECT * FROM payment_periods WHERE durum = 'Aktif'";
     let activePeriods;
     if (student && student.subeId) {
       query += " AND (subeId = $1 OR subeId IS NULL)";
-      activePeriods = (await client.query(query, [student.subeId])).rows;
+      activePeriods = (await pool.query(query, [student.subeId])).rows;
     } else {
-      activePeriods = (await client.query(query)).rows;
+      activePeriods = (await pool.query(query)).rows;
     }
     for (const period of activePeriods) {
       const kayitDate = new Date(kayitTarihi);
@@ -557,7 +684,7 @@ async function createProportionalDebtsForNewStudent(client, studentId, kayitTari
       const baslangicDate = new Date(period.baslangicTarihi);
       if (kayitDate > bitisDate) continue;
       if (kayitDate <= baslangicDate) {
-        await client.query(`
+        await pool.query(`
           INSERT INTO student_period_payments (studentId, periodId, tutar, odemeDurumu, olusturmaTarihi)
           VALUES ($1, $2, $3, 'Borçlu', $4)
         `, [studentId, period.id, period.tutar, new Date().toISOString()]);
@@ -569,7 +696,7 @@ async function createProportionalDebtsForNewStudent(client, studentId, kayitTari
       const kalanHafta = Math.ceil((bitisDate - kayitDate) / MS_PER_WEEK);
       const kalanHaftaClamped = Math.min(toplamHafta, Math.max(1, kalanHafta));
       const orantiliTutar = (period.tutar * kalanHaftaClamped) / toplamHafta;
-      await client.query(`
+      await pool.query(`
         INSERT INTO student_period_payments (studentId, periodId, tutar, odemeDurumu, olusturmaTarihi)
         VALUES ($1, $2, $3, 'Borçlu', $4)
       `, [studentId, period.id, Math.round(orantiliTutar * 100) / 100, new Date().toISOString()]);
@@ -599,13 +726,13 @@ async function deleteStudent(id) {
   await ensureReady();
   const client = await pool.connect();
   try {
-    await client.query("DELETE FROM users WHERE studentId = $1 AND rol = 'veli'", [id]);
-    await client.query('DELETE FROM attendance_entries WHERE studentId = $1', [id]);
-    await client.query('DELETE FROM parent_notes WHERE studentId = $1', [id]);
-    await client.query('DELETE FROM payments WHERE studentId = $1', [id]);
-    await client.query('DELETE FROM student_period_payments WHERE studentId = $1', [id]);
-    await client.query('DELETE FROM student_status_history WHERE studentId = $1', [id]);
-    await client.query('DELETE FROM students WHERE id = $1', [id]);
+    await pool.query("DELETE FROM users WHERE studentId = $1 AND rol = 'veli'", [id]);
+    await pool.query('DELETE FROM attendance_entries WHERE studentId = $1', [id]);
+    await pool.query('DELETE FROM parent_notes WHERE studentId = $1', [id]);
+    await pool.query('DELETE FROM payments WHERE studentId = $1', [id]);
+    await pool.query('DELETE FROM student_period_payments WHERE studentId = $1', [id]);
+    await pool.query('DELETE FROM student_status_history WHERE studentId = $1', [id]);
+    await pool.query('DELETE FROM students WHERE id = $1', [id]);
     return { success: true };
   } catch (error) {
     console.error('Öğrenci silme hatası:', error.message);
@@ -620,21 +747,46 @@ async function deleteStudent(id) {
 async function getAllUsers(subeId = null) {
   await ensureReady();
   if (subeId) {
-    const res = await pool.query('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, aktif, olusturmaTarihi FROM users WHERE subeId = $1 ORDER BY id DESC', [subeId]);
+    const res = await pool.query(
+      `SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, "studentId", aktif, olusturmaTarihi FROM users WHERE (subeId = $1 OR (rol = 'veli' AND "studentId" IN (
+        SELECT s.id FROM students s
+        LEFT JOIN groups g ON s."groupId" = g.id
+        LEFT JOIN users u ON g."instructorId" = u.id
+        WHERE s.subeId = $2 OR g.subeId = $3 OR u.subeId = $4
+        UNION
+        SELECT spp.studentId FROM student_period_payments spp
+        JOIN payment_periods pp ON spp.periodId = pp.id
+        WHERE pp.subeId = $5
+      ))) ORDER BY id DESC`,
+      [subeId, subeId, subeId, subeId, subeId]
+    );
     return res.rows;
   }
-  const res = await pool.query('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, aktif, olusturmaTarihi FROM users ORDER BY id DESC');
+  const res = await pool.query('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, subeId, "studentId", aktif, olusturmaTarihi FROM users ORDER BY id DESC');
   return res.rows;
 }
 
 /** Kullanıcı arama + sayfalama */
 async function searchUsers(subeId = null, opts = {}) {
   await ensureReady();
-  const { q = '', limit = 50, offset = 0 } = opts;
+  const { q = '', limit = 50, offset = 0, rol } = opts;
   const params = [];
   const where = [];
   let i = 1;
-  if (subeId) { where.push(`subeId = $${i++}`); params.push(subeId); }
+  if (subeId) {
+    where.push(`(subeId = $${i++} OR (rol = 'veli' AND "studentId" IN (
+      SELECT s.id FROM students s
+      LEFT JOIN groups g ON s."groupId" = g.id
+      LEFT JOIN users u ON g."instructorId" = u.id
+      WHERE s.subeId = $${i++} OR g.subeId = $${i++} OR u.subeId = $${i++}
+      UNION
+      SELECT spp.studentId FROM student_period_payments spp
+      JOIN payment_periods pp ON spp.periodId = pp.id
+      WHERE pp.subeId = $${i++}
+    )))`);
+    params.push(subeId, subeId, subeId, subeId, subeId);
+  }
+  if (rol) { where.push(`rol = $${i++}`); params.push(rol); }
   const searchTerm = (q || '').trim();
   if (searchTerm) {
     const like = '%' + String(searchTerm).replace(/[%_\\]/g, '\\$&') + '%';
@@ -656,15 +808,80 @@ async function searchUsers(subeId = null, opts = {}) {
   return { rows: res.rows, total };
 }
 
+/** Teşhis: Veli-şube eşleşmesini kontrol et */
+async function getVeliDiagnostic(subeId) {
+  await ensureReady();
+  const subeRes = await pool.query('SELECT id, subeAdi FROM subeler');
+  const subeler = subeRes.rows;
+  const lara = subeler.find(s => ((s.subeadi || s.subeAdi) || '').toLowerCase().includes('lara'));
+  const targetId = subeId || (lara && lara.id);
+  let studentsInSube = 0;
+  let velilerWithLaraStudent = [];
+  if (targetId) {
+    const scRes = await pool.query('SELECT COUNT(*)::int as c FROM students WHERE subeid = $1', [targetId]);
+    studentsInSube = scRes.rows[0]?.c || 0;
+    const laraIdsRes = await pool.query('SELECT id FROM students WHERE subeid = $1', [targetId]);
+    const laraStudentIds = laraIdsRes.rows.map(r => r.id);
+    if (laraStudentIds.length) {
+      const placeholders = laraStudentIds.map((_, i) => `$${i + 1}`).join(',');
+      const vwRes = await pool.query(`SELECT id, adSoyad, "studentId", "subeId" FROM users WHERE rol = 'veli' AND "studentId" IN (${placeholders})`, laraStudentIds);
+      velilerWithLaraStudent = vwRes.rows;
+    }
+  }
+  const veliRes = await pool.query('SELECT id, kullaniciAdi, adSoyad, studentId, subeId FROM users WHERE rol = $1', ['veli']);
+  const veliler = veliRes.rows;
+  const detay = [];
+  for (const v of veliler) {
+    const sid = v.studentId ?? v.studentid;
+    let s = null, g = null, u = null, sppCount = 0;
+    if (sid) {
+      const sRes = await pool.query('SELECT id, ad, soyad, subeId, groupId FROM students WHERE id = $1', [sid]);
+      s = sRes.rows[0];
+      const gid = s && (s.groupid ?? s.groupId);
+      if (gid) {
+        const gRes = await pool.query('SELECT id, subeId, instructorId FROM groups WHERE id = $1', [gid]);
+        g = gRes.rows[0];
+        const uid = g && (g.instructorid ?? g.instructorId);
+        if (uid) {
+          const uRes = await pool.query('SELECT id, subeId FROM users WHERE id = $1', [uid]);
+          u = uRes.rows[0];
+        }
+      }
+      const sppRes = await pool.query('SELECT COUNT(*)::int as c FROM student_period_payments spp JOIN payment_periods pp ON spp.periodId = pp.id WHERE spp.studentId = $1 AND pp.subeId = $2', [sid, targetId || 0]);
+      sppCount = sppRes.rows[0]?.c || 0;
+    }
+    const vsid = v.subeId ?? v.subeid;
+    const ssid = s && (s.subeId ?? s.subeid);
+    const gsid = g && (g.subeId ?? g.subeid);
+    const usid = u && (u.subeId ?? u.subeid);
+    const matchSube = vsid == targetId;
+    const matchStudent = ssid == targetId;
+    const matchGroup = gsid == targetId;
+    const matchInstructor = usid == targetId;
+    const matchSpp = sppCount > 0;
+    const wouldMatch = matchSube || matchStudent || matchGroup || matchInstructor || matchSpp;
+    detay.push({ veli: v.adSoyad ?? v.adsoyad, userId: v.id, studentId: sid, userSubeId: vsid, studentSubeId: ssid, groupSubeId: gsid, instructorSubeId: usid, sppInSube: sppCount, wouldMatch });
+  }
+  let searchResult = [];
+  if (targetId) {
+    const sr = await searchUsers(targetId, { limit: 100 });
+    searchResult = sr.rows || [];
+  }
+  const veliInResult = searchResult.filter(r => (r.rol || r.ROL) === 'veli');
+  const wouldMatchCount = detay.filter(d => d.wouldMatch).length;
+  const wouldMatchSample = detay.filter(d => d.wouldMatch).slice(0, 5);
+  return { subeler, targetSubeId: targetId, studentsInSube, velilerWithLaraStudentCount: velilerWithLaraStudent.length, velilerWithLaraStudent: velilerWithLaraStudent.slice(0, 5), veliCount: veliler.length, wouldMatchCount, wouldMatchSample, detay, searchResultCount: searchResult.length, veliInResultCount: veliInResult.length, veliInResult: veliInResult.slice(0, 5) };
+}
+
 async function getUserById(id) {
   await ensureReady();
-  const res = await pool.query('SELECT id, kullaniciAdi, rol, adSoyad, telefon, email, studentId, subeId, aktif, olusturmaTarihi FROM users WHERE id = $1', [id]);
+  const res = await pool.query('SELECT id, kullaniciadi, rol, adsoyad, telefon, email, studentid, subeid, aktif, olusturmatarihi FROM users WHERE id = $1', [id]);
   return res.rows[0] || null;
 }
 
 async function createUser(user) {
   await ensureReady();
-  const hashedSifre = user.sifre ? bcrypt.hashSync(user.sifre, 10) : '';
+  const hashedSifre = user.sifre ? await bcrypt.hash(user.sifre, 10) : '';
   const res = await pool.query(`
     INSERT INTO users (kullaniciAdi, sifre, rol, adSoyad, telefon, email, studentId, subeId, aktif, olusturmaTarihi)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -675,13 +892,13 @@ async function createUser(user) {
 
 async function updateUser(id, user) {
   await ensureReady();
-  const existing = await pool.query('SELECT kullaniciAdi FROM users WHERE id = $1', [id]);
+  const existing = await pool.query('SELECT kullaniciadi FROM users WHERE id = $1', [id]);
   if (user.sifre) {
-    const hashedSifre = bcrypt.hashSync(user.sifre, 10);
+    const hashedSifre = await bcrypt.hash(user.sifre, 10);
     await pool.query(`
       UPDATE users SET kullaniciAdi = $1, sifre = $2, rol = $3, adSoyad = $4, telefon = $5, email = $6, aktif = $7, subeId = $8 WHERE id = $9
     `, [user.kullaniciAdi, hashedSifre, user.rol, user.adSoyad, user.telefon || null, user.email || null, user.aktif !== undefined ? user.aktif : 1, user.subeId || null, id]);
-    if (existing.rows[0]?.kullaniciAdi === 'admin') {
+    if ((existing.rows[0]?.kullaniciAdi || existing.rows[0]?.kullaniciadi) === 'admin') {
       await pool.query("DELETE FROM settings WHERE anahtar = 'admin_initial_password_hash'");
     }
   } else {
@@ -704,7 +921,7 @@ async function deleteUser(id) {
 
 async function getUserByUsername(kullaniciAdi) {
   await ensureReady();
-  const res = await pool.query('SELECT * FROM users WHERE kullaniciAdi = $1', [kullaniciAdi]);
+  const res = await pool.query('SELECT * FROM users WHERE kullaniciadi = $1', [kullaniciAdi]);
   return res.rows[0] || null;
 }
 
@@ -767,6 +984,11 @@ async function updateSetting(key, value) {
   return { key, value };
 }
 
+async function deleteSetting(key) {
+  await ensureReady();
+  await pool.query('DELETE FROM settings WHERE anahtar = $1', [key]);
+}
+
 // ============ GRUP YÖNETİMİ / DURUM ============
 
 async function changeStudentStatus(studentId, durum, ayrilmaTarihi = null, sebep = null, aciklama = null, degistirenKullanici = null) {
@@ -823,14 +1045,72 @@ async function getStudentStats(subeId = null) {
     active = (await pool.query("SELECT COUNT(*) as count FROM students WHERE durum = 'Aktif'")).rows[0];
     inactive = (await pool.query("SELECT COUNT(*) as count FROM students WHERE durum != 'Aktif'")).rows[0];
   }
-  return {
-    total: parseInt(total.count, 10),
-    active: parseInt(active.count, 10),
-    inactive: parseInt(inactive.count, 10)
-  };
+  const num = (r) => parseInt(String(r?.count ?? r?.c ?? Object.values(r || {})[0] ?? 0), 10);
+  return { total: num(total), active: num(active), inactive: num(inactive) };
 }
 
 // ============ ÖDEME DÖNEMLERİ FONKSİYONLARI ============
+
+async function getLastNPeriodIdsPerSube(count) {
+  await ensureReady();
+  const n = Math.max(1, count);
+  const subeRes = await pool.query('SELECT id FROM subeler WHERE aktif = 1');
+  const subeler = subeRes.rows;
+  const allPeriodIds = new Set();
+  const allPeriods = [];
+  let minStart = null, maxEnd = null;
+  const norm = (p) => ({
+    id: p.id,
+    donemAdi: p.donemAdi || p.donemadi,
+    baslangicTarihi: p.baslangicTarihi || p.baslangictarihi,
+    bitisTarihi: p.bitisTarihi || p.bitistarihi,
+    tutar: p.tutar
+  });
+  const addPeriod = (p) => {
+    const np = norm(p);
+    if (allPeriodIds.has(np.id)) return;
+    allPeriodIds.add(np.id);
+    allPeriods.push(np);
+    if (np.baslangicTarihi) {
+      const d = new Date(np.baslangicTarihi);
+      if (!minStart || d < minStart) minStart = d;
+    }
+    if (np.bitisTarihi) {
+      const d = new Date(np.bitisTarihi);
+      if (!maxEnd || d > maxEnd) maxEnd = d;
+    }
+  };
+  for (const sube of subeler) {
+    const periodsRes = await pool.query(
+      'SELECT * FROM payment_periods WHERE subeid = $1 ORDER BY baslangictarihi DESC LIMIT $2',
+      [sube.id, n]
+    );
+    const periods = periodsRes.rows;
+    if (periods.length > 0) {
+      periods.forEach(addPeriod);
+    } else {
+      const globalRes = await pool.query(
+        'SELECT * FROM payment_periods WHERE subeid IS NULL ORDER BY baslangictarihi DESC LIMIT $1',
+        [n]
+      );
+      globalRes.rows.forEach(addPeriod);
+    }
+  }
+  if (allPeriodIds.size === 0) {
+    const globalRes = await pool.query(
+      'SELECT * FROM payment_periods WHERE subeid IS NULL ORDER BY baslangictarihi DESC LIMIT $1',
+      [n]
+    );
+    globalRes.rows.forEach(addPeriod);
+  }
+  const sorted = allPeriods.sort((a, b) => new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi));
+  return {
+    periodIds: Array.from(allPeriodIds),
+    startDate: minStart ? minStart.toISOString().split('T')[0] : null,
+    endDate: maxEnd ? maxEnd.toISOString().split('T')[0] : null,
+    selectedPeriods: sorted
+  };
+}
 
 async function getAllPeriods(subeId = null) {
   await ensureReady();
@@ -950,30 +1230,27 @@ async function getStudentPeriodPayments(studentId) {
   return res.rows;
 }
 
-async function getAllStudentPeriodPayments(subeId = null) {
+async function getAllStudentPeriodPayments(subeId = null, periodIds = null) {
   await ensureReady();
-  if (subeId) {
-    const res = await pool.query(`
-      SELECT spp.*, s.ad, s.soyad, s.subeId, s.kayitTarihi, s.ayrilmaTarihi,
-        (SELECT MAX(h.degisimTarihi) FROM student_status_history h WHERE h.studentId = s.id AND h.yeniDurum = 'Aktif') AS sonAktifTarihi,
-        pp.donemAdi, pp.baslangicTarihi, pp.bitisTarihi, pp.subeId AS periodSubeId
-      FROM student_period_payments spp
-      JOIN students s ON spp.studentId = s.id
-      JOIN payment_periods pp ON spp.periodId = pp.id
-      WHERE s.subeId = $1 AND pp.subeId = $1
-      ORDER BY pp.baslangicTarihi DESC, s.ad
-    `, [subeId]);
-    return res.rows;
+  const params = [];
+  let whereClause = '';
+  if (periodIds && periodIds.length > 0) {
+    whereClause = 'WHERE pp.id = ANY($1)';
+    params.push(periodIds);
+  } else if (subeId) {
+    whereClause = 'WHERE s.subeid = $1 AND pp.subeid = $1';
+    params.push(subeId);
   }
   const res = await pool.query(`
-    SELECT spp.*, s.ad, s.soyad, s.subeId, s.kayitTarihi, s.ayrilmaTarihi,
-      (SELECT MAX(h.degisimTarihi) FROM student_status_history h WHERE h.studentId = s.id AND h.yeniDurum = 'Aktif') AS sonAktifTarihi,
-      pp.donemAdi, pp.baslangicTarihi, pp.bitisTarihi, pp.subeId AS periodSubeId
+    SELECT spp.*, s.ad, s.soyad, s.subeid, s.kayittarihi, s.ayrilmatarihi,
+      (SELECT MAX(h.degisimtarihi) FROM student_status_history h WHERE h.studentid = s.id AND h.yenidurum = 'Aktif') AS sonaktiftarihi,
+      pp.donemadi, pp.baslangictarihi, pp.bitistarihi, pp.subeid AS periodsubeid
     FROM student_period_payments spp
-    JOIN students s ON spp.studentId = s.id
-    JOIN payment_periods pp ON spp.periodId = pp.id
-    ORDER BY pp.baslangicTarihi DESC, s.ad
-  `);
+    JOIN students s ON spp.studentid = s.id
+    JOIN payment_periods pp ON spp.periodid = pp.id
+    ${whereClause}
+    ORDER BY pp.baslangictarihi DESC, s.ad
+  `, params);
   return res.rows;
 }
 
@@ -1199,14 +1476,14 @@ async function deleteGroup(id) {
   }
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM attendance_entries WHERE sessionId IN (SELECT id FROM attendance_sessions WHERE groupId = $1)', [id]);
-    await client.query('DELETE FROM attendance_sessions WHERE groupId = $1', [id]);
-    await client.query('UPDATE test_sessions SET groupId = NULL WHERE groupId = $1', [id]);
-    await client.query('DELETE FROM groups WHERE id = $1', [id]);
-    await client.query('COMMIT');
+    await pool.query('BEGIN');
+    await pool.query('DELETE FROM attendance_entries WHERE sessionId IN (SELECT id FROM attendance_sessions WHERE groupId = $1)', [id]);
+    await pool.query('DELETE FROM attendance_sessions WHERE groupId = $1', [id]);
+    await pool.query('UPDATE test_sessions SET groupId = NULL WHERE groupId = $1', [id]);
+    await pool.query('DELETE FROM groups WHERE id = $1', [id]);
+    await pool.query('COMMIT');
   } catch (e) {
-    await client.query('ROLLBACK');
+    await pool.query('ROLLBACK');
     throw e;
   } finally {
     client.release();
@@ -1274,29 +1551,29 @@ async function saveAttendance({ groupId, date, instructorId, entries }) {
   await ensureReady();
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
+    await pool.query('BEGIN');
     let session = await getAttendanceSession(groupId, date);
     if (!session) {
-      const res = await client.query(`
+      const res = await pool.query(`
         INSERT INTO attendance_sessions (groupId, date, instructorId, createdAt)
         VALUES ($1, $2, $3, $4)
         RETURNING id
       `, [groupId, date, instructorId || null, new Date().toISOString()]);
       session = { id: res.rows[0].id };
     } else {
-      await client.query('UPDATE attendance_sessions SET instructorId = $1 WHERE id = $2', [instructorId || null, session.id]);
-      await client.query('DELETE FROM attendance_entries WHERE sessionId = $1', [session.id]);
+      await pool.query('UPDATE attendance_sessions SET instructorId = $1 WHERE id = $2', [instructorId || null, session.id]);
+      await pool.query('DELETE FROM attendance_entries WHERE sessionId = $1', [session.id]);
     }
     for (const entry of entries) {
-      await client.query(`
+      await pool.query(`
         INSERT INTO attendance_entries (sessionId, studentId, status, note)
         VALUES ($1, $2, $3, $4)
       `, [session.id, entry.studentId, entry.status, entry.note || null]);
     }
-    await client.query('COMMIT');
+    await pool.query('COMMIT');
     return { success: true, sessionId: session.id };
   } catch (e) {
-    await client.query('ROLLBACK');
+    await pool.query('ROLLBACK');
     throw e;
   } finally {
     client.release();
@@ -1399,8 +1676,8 @@ async function createTestSession(session) {
   await ensureReady();
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    const res = await client.query(`
+    await pool.query('BEGIN');
+    const res = await pool.query(`
       INSERT INTO test_sessions (studentId, olcumNo, date, groupId, createdBy, createdRole, notes, aiComment, createdAt)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING id
@@ -1411,15 +1688,15 @@ async function createTestSession(session) {
     ]);
     const sessionId = res.rows[0].id;
     for (const m of (session.metrics || [])) {
-      await client.query(`
+      await pool.query(`
         INSERT INTO test_metrics (sessionId, metricKey, label, value, unit, teamAvg, generalAvg)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
       `, [sessionId, m.metricKey, m.label, m.value !== '' && m.value !== null ? m.value : null, m.unit || null, m.teamAvg !== '' && m.teamAvg !== null ? m.teamAvg : null, m.generalAvg !== '' && m.generalAvg !== null ? m.generalAvg : null]);
     }
-    await client.query('COMMIT');
+    await pool.query('COMMIT');
     return { success: true, id: sessionId };
   } catch (e) {
-    await client.query('ROLLBACK');
+    await pool.query('ROLLBACK');
     throw e;
   } finally {
     client.release();
@@ -1736,18 +2013,18 @@ async function createProportionalDebtsForReturningStudent(studentId, dönüsTari
   await ensureReady();
   const client = await pool.connect();
   try {
-    const studentRes = await client.query('SELECT subeId FROM students WHERE id = $1', [studentId]);
+    const studentRes = await pool.query('SELECT subeId FROM students WHERE id = $1', [studentId]);
     const student = studentRes.rows[0];
     let query = "SELECT * FROM payment_periods WHERE durum = 'Aktif'";
     let activePeriods;
     if (student && student.subeid) {
       query += " AND (subeId = $1 OR subeId IS NULL)";
-      activePeriods = (await client.query(query, [student.subeid])).rows;
+      activePeriods = (await pool.query(query, [student.subeid])).rows;
     } else {
-      activePeriods = (await client.query(query)).rows;
+      activePeriods = (await pool.query(query)).rows;
     }
     for (const period of activePeriods) {
-      const existingRes = await client.query('SELECT id FROM student_period_payments WHERE studentId = $1 AND periodId = $2', [studentId, period.id]);
+      const existingRes = await pool.query('SELECT id FROM student_period_payments WHERE studentId = $1 AND periodId = $2', [studentId, period.id]);
       if (existingRes.rows.length > 0) continue;
       const donusDate = new Date(dönüsTarihi);
       const bitisDate = new Date(period.bitisTarihi);
@@ -1761,7 +2038,7 @@ async function createProportionalDebtsForReturningStudent(studentId, dönüsTari
         const kalanHaftaClamped = Math.min(toplamHafta, Math.max(1, kalanHafta));
         orantiliTutar = (period.tutar * kalanHaftaClamped) / toplamHafta;
       }
-      await client.query(`
+      await pool.query(`
         INSERT INTO student_period_payments (studentId, periodId, tutar, odemeDurumu, olusturmaTarihi)
         VALUES ($1, $2, $3, 'Borçlu', $4)
       `, [studentId, period.id, Math.round(orantiliTutar * 100) / 100, new Date().toISOString()]);
@@ -1811,6 +2088,7 @@ module.exports = {
   getInactiveStudents,
   getAllUsers,
   searchUsers,
+  getVeliDiagnostic,
   getUserById,
   createUser,
   updateUser,
@@ -1824,7 +2102,9 @@ module.exports = {
   deleteLegacyPayment,
   getSetting,
   updateSetting,
+  deleteSetting,
   getStudentStats,
+  getLastNPeriodIdsPerSube,
   getAllPeriods,
   getActivePeriods,
   createPeriod,

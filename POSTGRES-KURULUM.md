@@ -1,53 +1,109 @@
-# PostgreSQL ile Yüksek Ölçek Kurulumu
+# PostgreSQL Kurulumu - Futbol Okulu
 
-On binlerce öğrenci ve veli verisi için PostgreSQL kullanmanız önerilir. SQLite eşzamanlı yazma ve büyük veri setlerinde sınırlıdır.
+Bu rehber PostgreSQL bağlantısını adım adım kurmanızı sağlar.
 
-## 1. PostgreSQL Kurulumu
+## Ön koşul
 
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install postgresql postgresql-contrib
-```
+PostgreSQL yüklü olmalı. İndir: https://www.postgresql.org/download/windows/
 
-**Windows:** https://www.postgresql.org/download/windows/
+Kurulum sırasında **postgres** kullanıcısı için bir şifre belirleyin. Bu şifreyi not alın.
 
-## 2. Veritabanı Oluşturma
+---
 
-```bash
-sudo -u postgres psql
-CREATE DATABASE futbol_okulu;
-CREATE USER futbol_user WITH ENCRYPTED PASSWORD 'güçlü_şifre';
-GRANT ALL PRIVILEGES ON DATABASE futbol_okulu TO futbol_user;
-\q
-```
+## Adım 1: .env dosyası
 
-## 3. Schema Yükleme (ilk kurulum)
+Proje kökünde `.env` dosyası yoksa:
 
 ```bash
-psql -U futbol_user -d futbol_okulu -f schema-postgres.sql
+copy .env.example .env
 ```
 
-Veya uygulama ilk çalıştığında `database-pg.js` otomatik tablo oluşturur.
+`.env` dosyasını açın ve şu satırı bulun (yorum satırı olabilir):
 
-## 4. Ortam Değişkenleri
-
-`.env` dosyasına ekleyin:
-
-```env
-DATABASE_URL=postgresql://futbol_user:güçlü_şifre@localhost:5432/futbol_okulu
+```
+# DATABASE_URL=postgresql://postgres:SIZIN_SIFRENIZ@localhost:5432/futbol_okulu
 ```
 
-## 5. Bağlantı Havuzu
+**Başındaki `#` işaretini kaldırın** ve `SIZIN_SIFRENIZ` yerine PostgreSQL kurulumunda belirlediğiniz şifreyi yazın:
 
-PostgreSQL adapter varsayılan olarak 20 bağlantılı pool kullanır. Yüksek trafikte `database-pg.js` içindeki `max: 20` değerini artırabilirsiniz.
+```
+DATABASE_URL=postgresql://postgres:gercek_sifreniz@localhost:5432/futbol_okulu
+```
 
-## 6. Yedekleme
+---
+
+## Adım 2: Veritabanını oluşturun
 
 ```bash
-pg_dump -U futbol_user futbol_okulu > yedek_$(date +%Y%m%d).sql
+npm run pg:setup
 ```
 
-## 7. SQLite'dan Geçiş
+Bu komut `futbol_okulu` veritabanını oluşturur. Başarılı olursa "✓ futbol_okulu veritabanı oluşturuldu" mesajını görürsünüz.
 
-Mevcut SQLite veritabanından PostgreSQL'e veri taşımak için özel bir migration script yazmanız gerekir. Şu an manuel export/import veya pgloader gibi araçlar kullanılabilir.
+---
+
+## Adım 3: SQLite verisi varsa taşıyın
+
+Mevcut `futbol-okulu.db` dosyanız varsa (öğrenci, ödeme vb. veriler):
+
+```bash
+# Önce sunucuyu durdurun (Ctrl+C)
+npm run migrate
+```
+
+---
+
+## Adım 4: Bağlantıyı test edin
+
+```bash
+npm run pg:check
+```
+
+Bu komut adım adım kontrol eder:
+- .env dosyası var mı
+- DATABASE_URL tanımlı mı
+- PostgreSQL'e bağlanılabiliyor mu
+- Tablolar ve kayıt sayıları
+
+Hata varsa ne yapmanız gerektiğini söyler.
+
+---
+
+## Adım 5: Uygulamayı başlatın
+
+```bash
+npm start
+```
+
+"✅ PostgreSQL aktif" mesajını görmelisiniz.
+
+---
+
+## Sorun giderme
+
+| Hata | Çözüm |
+|------|-------|
+| **password authentication failed** | .env'deki DATABASE_URL içindeki şifre yanlış. Kurulumda belirlediğiniz postgres şifresini kullanın. |
+| **connect ECONNREFUSED** | PostgreSQL servisi çalışmıyor. Windows: `Services` > `postgresql-x64-16` > Start |
+| **database "futbol_okulu" does not exist** | `npm run pg:setup` çalıştırın |
+| **Veriler görünmüyor** | `npm run migrate` ile SQLite verisini taşıyın. `futbol-okulu.db` proje kökünde olmalı. |
+
+### Teşhis komutu
+
+Sorun yaşıyorsanız önce:
+
+```bash
+npm run pg:check
+```
+
+Bu komut sorunu tespit eder ve ne yapmanız gerektiğini söyler.
+
+---
+
+## SQLite'a geri dönmek
+
+PostgreSQL sorun çıkarıyorsa geçici olarak SQLite kullanabilirsiniz:
+
+1. `.env` dosyasına ekleyin: `USE_SQLITE=true`
+2. `DATABASE_URL` satırını yorum yapın (# ile başlatın) veya silin
+3. `npm start`

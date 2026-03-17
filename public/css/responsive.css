@@ -1,52 +1,87 @@
 /**
  * Mobil uyumluluk - Tüm sayfalar için responsive stiller
+ * Touch-friendly (min 44px), safe area, veli paneli odaklı
  */
+
+/* Safe area - çentikli telefonlar için */
+html {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+body {
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+}
+
+/* Touch-friendly - tap highlight kaldır, dokunmatik optimizasyon */
+button, .btn-danger, .btn-primary, .btn-success, .btn-login,
+.nav-menu a, #navMenu a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 @media (max-width: 768px) {
   .header {
     flex-wrap: wrap;
-    padding: 15px 15px !important;
+    padding: 12px 16px !important;
     gap: 12px;
+    padding-left: max(16px, env(safe-area-inset-left)) !important;
+    padding-right: max(16px, env(safe-area-inset-right)) !important;
   }
 
   .logo {
-    font-size: 18px !important;
+    font-size: 16px !important;
     flex: 1;
     min-width: 0;
+    line-height: 1.3;
+    word-break: break-word;
   }
 
-  .nav-menu {
+  /* Nav - hem .nav-menu hem #navMenu (menu.js ile doldurulan) */
+  .nav-menu, #navMenu {
     order: 3;
     width: 100%;
     flex-wrap: wrap;
     gap: 8px;
+    display: flex !important;
   }
 
-  .nav-menu a {
-    padding: 8px 12px !important;
+  .nav-menu a, #navMenu a {
+    padding: 10px 14px !important;
     font-size: 13px !important;
+    min-height: 44px;
+    min-width: auto;
   }
 
   .user-info {
     gap: 10px !important;
     flex-wrap: wrap;
+    align-items: center;
   }
 
-  .user-name {
+  .user-name, #currentUserName {
     font-size: 14px !important;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .logout-btn, .btn-danger {
-    padding: 8px 14px !important;
-    font-size: 13px !important;
+    padding: 12px 18px !important;
+    font-size: 14px !important;
+    min-height: 44px;
+    min-width: 44px;
   }
 
   .container {
     margin: 15px auto !important;
-    padding: 0 12px !important;
+    padding: 0 16px !important;
+    padding-left: max(16px, env(safe-area-inset-left)) !important;
+    padding-right: max(16px, env(safe-area-inset-right)) !important;
   }
 
   .content {
-    padding: 20px 15px !important;
+    padding: 20px 16px !important;
     border-radius: 12px !important;
   }
 
@@ -60,13 +95,21 @@
     font-size: 22px !important;
   }
 
-  .stats-cards {
+  .stats-cards, .stats-grid {
     grid-template-columns: 1fr 1fr !important;
     gap: 12px !important;
   }
 
   .stat-card {
-    padding: 15px !important;
+    padding: 18px !important;
+  }
+
+  .stat-card .icon {
+    font-size: 36px !important;
+  }
+
+  .stat-card .number {
+    font-size: 28px !important;
   }
 
   .stat-value {
@@ -82,14 +125,27 @@
     width: 100%;
   }
 
+  .filter-bar {
+    flex-wrap: wrap;
+    gap: 8px !important;
+    padding: 12px 16px !important;
+  }
+
+  .filter-btn {
+    min-height: 44px;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+  }
+
   .tabs {
     flex-wrap: wrap;
-    gap: 5px;
+    gap: 6px;
   }
 
   .tab {
-    padding: 10px 15px !important;
+    padding: 12px 16px !important;
     font-size: 14px !important;
+    min-height: 44px;
   }
 
   .filters {
@@ -103,12 +159,12 @@
     width: 100%;
   }
 
-  /* Tablo mobil - yatay kaydırma */
+  /* Tablo mobil - yatay kaydırma, touch scroll */
   .table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin: 0 -15px;
-    padding: 0 15px;
+    margin: 0 -16px;
+    padding: 0 16px;
   }
 
   table {
@@ -117,24 +173,24 @@
   }
 
   th, td {
-    padding: 10px 8px !important;
+    padding: 12px 10px !important;
   }
 
   /* İşlem butonları - mobilde dikey veya wrap */
   td [style*="display: flex"],
   td [style*="display:flex"] {
     flex-direction: column !important;
-    gap: 6px !important;
+    gap: 8px !important;
   }
 
   /* Kart grid - mobilde tek sütun */
   .student-grid {
     grid-template-columns: 1fr !important;
-    gap: 15px;
+    gap: 16px;
   }
 
   .student-card {
-    padding: 18px !important;
+    padding: 20px !important;
   }
 
   .student-name {
@@ -151,13 +207,24 @@
     font-size: 20px !important;
   }
 
+  /* Veli paneli - yoklama listesi scroll */
+  .attendance-detail-list {
+    max-height: 200px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .attendance-row {
+    padding: 10px 12px !important;
+  }
+
   /* Modal mobil */
   .modal-content {
     width: 95% !important;
     max-width: 95% !important;
-    padding: 25px 20px !important;
+    padding: 24px 20px !important;
     max-height: 85vh;
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .modal-header h2 {
@@ -168,6 +235,8 @@
   .form-group select,
   .form-group textarea {
     font-size: 16px !important; /* iOS zoom önleme */
+    min-height: 44px;
+    padding: 12px 16px !important;
   }
 
   /* Ödeme bilgisi alanları */
@@ -178,28 +247,81 @@
 
   /* Buton grupları */
   .btn-primary, .btn-success {
-    padding: 10px 14px !important;
+    padding: 12px 18px !important;
     font-size: 14px !important;
+    min-height: 44px;
   }
+
+  /* Welcome card mobil */
+  .welcome-card {
+    padding: 24px 20px !important;
+  }
+
+  .welcome-card h1, .welcome-card h2 {
+    font-size: 22px !important;
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .chart-card, .recent-activity {
+    padding: 20px !important;
+  }
+
+  /* Veli - mobilde kısa logo göster */
+  .logo-full { display: none !important; }
+  .logo-mobile { display: inline !important; }
 }
 
 @media (max-width: 480px) {
-  .stats-cards {
+  .stats-cards, .stats-grid {
     grid-template-columns: 1fr !important;
   }
 
   .logo {
-    font-size: 16px !important;
+    font-size: 14px !important;
+  }
+
+  .header .logo {
+    font-size: 14px !important;
+  }
+
+  .student-card {
+    padding: 16px !important;
   }
 }
 
 /* Login sayfası mobil */
 @media (max-width: 768px) {
   .login-container {
-    padding: 30px 20px !important;
+    padding: 24px 20px !important;
+    margin: 16px;
   }
 
-  .logo h1 {
+  .login-container .logo h1 {
     font-size: 24px !important;
+  }
+
+  .form-group input {
+    min-height: 48px;
+    padding: 14px 16px !important;
+  }
+
+  .btn-login {
+    min-height: 52px;
+    padding: 16px !important;
+    font-size: 17px !important;
+  }
+
+  .info-box {
+    padding: 16px !important;
+  }
+
+  .role-badge {
+    display: inline-block;
+    padding: 8px 12px;
+    margin: 4px;
+    min-height: 36px;
   }
 }

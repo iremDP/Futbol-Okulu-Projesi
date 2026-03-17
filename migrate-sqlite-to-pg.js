@@ -8,6 +8,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 if (!process.env.DATABASE_URL) {
@@ -19,6 +20,10 @@ const Database = require('better-sqlite3');
 const { Pool } = require('pg');
 
 const sqlitePath = path.join(__dirname, 'futbol-okulu.db');
+if (!fs.existsSync(sqlitePath)) {
+  console.error('HATA: futbol-okulu.db bulunamadi:', sqlitePath);
+  process.exit(1);
+}
 const sqlite = new Database(sqlitePath, { readonly: true });
 const pg = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -33,6 +38,19 @@ async function run() {
   const client = await pg.connect();
   try {
     console.log('SQLite -> PostgreSQL taşıma başlıyor...\n');
+
+    // Tablolar yoksa schema yükle
+    const schemaPath = path.join(__dirname, 'schema-postgres.sql');
+    if (fs.existsSync(schemaPath)) {
+      const schema = fs.readFileSync(schemaPath, 'utf8');
+      const stmts = schema.replace(/--[^\n]*/g, '').split(';').map(s => s.trim()).filter(Boolean);
+      for (const stmt of stmts) {
+        if (stmt.toUpperCase().startsWith('CREATE') || stmt.toUpperCase().startsWith('INSERT')) {
+          await client.query(stmt + ';').catch(() => {});
+        }
+      }
+      console.log('  ✓ Şema kontrol edildi');
+    }
 
     // Önce PostgreSQL tablolarını temizle (FK sırasına göre)
     const truncateOrder = [

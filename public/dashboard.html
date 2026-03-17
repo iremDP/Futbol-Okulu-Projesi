@@ -2,7 +2,12 @@
 <html lang="tr">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <title>Dashboard - Futbol Okulu</title>
     <style>
         * {
@@ -475,18 +480,23 @@
         }
 
         function applyPeriodFilter(payments) {
-            if (!periodFilterCount || allPeriods.length === 0) return payments;
-
+            if (!periodFilterCount) return payments;
+            if (adminPeriodIds && adminPeriodIds.size > 0) {
+                return payments.filter(p => adminPeriodIds.has(p.periodId));
+            }
+            if (allPeriods.length === 0) return payments;
             const sortedPeriods = [...allPeriods].sort((a, b) =>
                 new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi)
             );
-            const periodIds = new Set(
-                sortedPeriods.slice(0, periodFilterCount).map(p => p.id)
-            );
+            const periodIds = new Set(sortedPeriods.slice(0, periodFilterCount).map(p => p.id));
             return payments.filter(p => periodIds.has(p.periodId));
         }
 
+        let adminPeriodIds = null;
+        let adminPeriodRange = null; // { start, end } admin tüm şubeler için
+
         function getPeriodRange() {
+            if (adminPeriodRange) return adminPeriodRange;
             if (!periodFilterCount || allPeriods.length === 0) return null;
             const sortedPeriods = [...allPeriods].sort((a, b) =>
                 new Date(b.baslangicTarihi) - new Date(a.baslangicTarihi)
@@ -510,7 +520,13 @@
                 btn.addEventListener('click', () => {
                     periodFilterCount = parseInt(btn.dataset.count, 10);
                     updateFilterButtons();
-                    renderPaymentStats();
+                    const user = JSON.parse(localStorage.getItem('currentUser'));
+                    const isAdminAllSubeler = user.rol === 'admin' && !selectedSubeId;
+                    if (isAdminAllSubeler) {
+                        loadDashboard();
+                    } else {
+                        renderPaymentStats();
+                    }
                 });
             });
         }
@@ -563,6 +579,7 @@
                 end: range.end
             });
             if (subeId) params.append('subeId', subeId);
+            // Admin tüm şubeler: subeId gönderme, tüm şubelerin toplamı gelsin
 
             const response = await fetch(`${API_URL}/reports/student-period-stats?${params.toString()}`);
             const data = await response.json();
@@ -591,14 +608,17 @@
                 }
                 const statsResponse = await fetch(statsUrl);
                 const stats = await statsResponse.json();
-                
-                document.getElementById('totalStudents').textContent = stats.total;
-                document.getElementById('activeStudents').textContent = stats.active;
-                document.getElementById('inactiveStudents').textContent = stats.inactive;
+                if (stats.error) {
+                    console.error('Stats API hatası:', stats.error);
+                }
+                document.getElementById('totalStudents').textContent = stats.total ?? 0;
+                document.getElementById('activeStudents').textContent = stats.active ?? 0;
+                document.getElementById('inactiveStudents').textContent = stats.inactive ?? 0;
                 
                 // Progress barlar
-                const activePercent = stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0;
-                const inactivePercent = stats.total > 0 ? Math.round((stats.inactive / stats.total) * 100) : 0;
+                const total = Number(stats.total) || 0;
+                const activePercent = total > 0 ? Math.round(((stats.active ?? 0) / total) * 100) : 0;
+                const inactivePercent = total > 0 ? Math.round(((stats.inactive ?? 0) / total) * 100) : 0;
                 
                 document.getElementById('activeProgress').style.width = activePercent + '%';
                 document.getElementById('activeProgress').textContent = activePercent + '%';
@@ -616,20 +636,35 @@
                 document.getElementById('totalGroups').textContent = groups.length;
                 
                 // Ödeme istatistikleri
-                let paymentsUrl = `${API_URL}/period-payments`;
                 const paymentsSubeId = user.rol === 'yonetici' ? user.subeId : selectedSubeId;
-                if (paymentsSubeId) {
-                    paymentsUrl += `?subeId=${paymentsSubeId}`;
+                const isAdminAllSubeler = user.rol === 'admin' && !paymentsSubeId;
+
+                if (isAdminAllSubeler) {
+                    adminPeriodIds = null;
+                    adminPeriodRange = null;
+                    const lastPerSubeRes = await fetch(`${API_URL}/periods/last-per-sube?count=${periodFilterCount}`);
+                    const lastPerSube = await lastPerSubeRes.json();
+                    adminPeriodIds = new Set(lastPerSube.periodIds || []);
+                    if (lastPerSube.startDate && lastPerSube.endDate) {
+                        adminPeriodRange = { start: lastPerSube.startDate, end: lastPerSube.endDate };
+                    }
+                    const periodIdsParam = (lastPerSube.periodIds || []).join(',');
+                    const paymentsUrl = periodIdsParam ? `${API_URL}/period-payments?periodIds=${encodeURIComponent(periodIdsParam)}` : `${API_URL}/period-payments`;
+                    const paymentsResponse = await fetch(paymentsUrl);
+                    allPayments = await paymentsResponse.json();
+                    allPeriods = []; // Tek şube değil, period listesi kullanılmıyor
+                } else {
+                    adminPeriodIds = null;
+                    adminPeriodRange = null;
+                    const paymentsUrl = `${API_URL}/period-payments${paymentsSubeId ? `?subeId=${paymentsSubeId}` : ''}`;
+                    const periodsUrl = `${API_URL}/periods${paymentsSubeId ? `?subeId=${paymentsSubeId}` : ''}`;
+                    const [paymentsResponse, periodsResponse] = await Promise.all([
+                        fetch(paymentsUrl),
+                        fetch(periodsUrl)
+                    ]);
+                    allPayments = await paymentsResponse.json();
+                    allPeriods = await periodsResponse.json();
                 }
-                const periodsUrl = `${API_URL}/periods${paymentsSubeId ? `?subeId=${paymentsSubeId}` : ''}`;
-
-                const [paymentsResponse, periodsResponse] = await Promise.all([
-                    fetch(paymentsUrl),
-                    fetch(periodsUrl)
-                ]);
-
-                allPayments = await paymentsResponse.json();
-                allPeriods = await periodsResponse.json();
 
                 updateFilterButtons();
                 renderPaymentStats();
