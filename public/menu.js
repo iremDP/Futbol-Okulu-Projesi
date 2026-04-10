@@ -33,14 +33,10 @@
             ];
         }
 
-        navMenu.style.display = 'flex';
-        navMenu.style.gap = '10px';
-        navMenu.style.flexWrap = 'wrap';
-
         const baseStyle =
             'padding: 8px 12px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;';
 
-        navMenu.innerHTML = items
+        const linksHtml = items
             .map(item => {
                 const style = item.isAdmin
                     ? `${baseStyle} background: #dc3545;`
@@ -49,6 +45,26 @@
                 return `<a href="${item.href}" class="${className}" style="${style}">${item.text}</a>`;
             })
             .join('');
+
+        navMenu.className = 'nav-wrapper';
+        navMenu.innerHTML = '<button class="hamburger-btn" type="button" aria-label="Menüyü aç" aria-expanded="false">☰</button><div class="nav-links">' + linksHtml + '</div>';
+
+        const hamburger = navMenu.querySelector('.hamburger-btn');
+        const navLinks = navMenu.querySelector('.nav-links');
+        if (hamburger && navLinks) {
+            hamburger.addEventListener('click', function () {
+                const open = navLinks.classList.toggle('nav-open');
+                hamburger.setAttribute('aria-expanded', open);
+                hamburger.textContent = open ? '✕' : '☰';
+            });
+            document.addEventListener('click', function (e) {
+                if (navLinks.classList.contains('nav-open') && !navMenu.contains(e.target)) {
+                    navLinks.classList.remove('nav-open');
+                    hamburger.setAttribute('aria-expanded', 'false');
+                    hamburger.textContent = '☰';
+                }
+            });
+        }
     }
 
     if (document.readyState === 'loading') {

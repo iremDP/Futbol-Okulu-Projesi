@@ -1194,6 +1194,7 @@ async function getPeriodPaymentStats(periodIds, subeId = null) {
     FROM student_period_payments spp
     JOIN students s ON spp.studentId = s.id
     WHERE spp.periodId IN (${placeholders})
+      AND (spp.odemeDurumu != 'Borçlu' OR s.durum = 'Aktif')
   `;
   const params = [...periodIds];
   if (subeId) {
@@ -1210,7 +1211,7 @@ async function getPeriodPaymentStats(periodIds, subeId = null) {
     if (durum === 'Ödendi') {
       odenenSayisi += sayi;
       totalOdenen += toplam;
-    } else {
+    } else if (durum === 'Borçlu') {
       borcluSayisi += sayi;
       totalBorclu += toplam;
     }
@@ -1264,6 +1265,7 @@ async function searchStudentPeriodPayments(subeId = null, opts = {}) {
   if (subeId) { where.push('s.subeId = $' + i + ' AND pp.subeId = $' + i); params.push(subeId); i++; }
   if (periodId) { where.push(`pp.id = $${i++}`); params.push(periodId); }
   if (odemeDurumu) { where.push(`spp.odemeDurumu = $${i++}`); params.push(odemeDurumu); }
+  if (odemeDurumu === 'Borçlu') { where.push("s.durum = 'Aktif'"); }
   const searchTerm = (q || '').trim();
   if (searchTerm) {
     const like = '%' + String(searchTerm).replace(/[%_\\]/g, '\\$&') + '%';

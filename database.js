@@ -611,7 +611,7 @@ WHERE id = ?
       student.groupId || null,
       id
     );
-    
+
     return { id, ...student };
   } catch (error) {
     console.error('UPDATE HATASI:', error.message);
@@ -898,7 +898,7 @@ function changeStudentStatus(studentId, durum, ayrilmaTarihi = null, sebep = nul
     degistirenKullanici,
     currentStudent.groupId || null
   );
-  
+
   return { success: true };
 }
 
@@ -1075,6 +1075,7 @@ function getPeriodPaymentStats(periodIds, subeId = null) {
     FROM student_period_payments spp
     JOIN students s ON spp.studentId = s.id
     WHERE spp.periodId IN (${placeholders})
+      AND (spp.odemeDurumu != 'Borçlu' OR s.durum = 'Aktif')
   `;
   const params = [...periodIds];
   if (subeId) {
@@ -1088,7 +1089,7 @@ function getPeriodPaymentStats(periodIds, subeId = null) {
     if (r.odemeDurumu === 'Ödendi') {
       odenenSayisi = r.sayi;
       totalOdenen = r.toplam || 0;
-    } else {
+    } else if (r.odemeDurumu === 'Borçlu') {
       borcluSayisi = r.sayi;
       totalBorclu = r.toplam || 0;
     }
@@ -1211,6 +1212,7 @@ function searchStudentPeriodPayments(subeId = null, opts = {}) {
     params.push(...periodIds);
   } else if (periodId) { where.push('pp.id = ?'); params.push(periodId); }
   if (odemeDurumu) { where.push('spp.odemeDurumu = ?'); params.push(odemeDurumu); }
+  if (odemeDurumu === 'Borçlu') { where.push("s.durum = 'Aktif'"); }
   if (searchTerm) {
     const like = '%' + searchTerm.replace(/[%_]/g, '') + '%';
     where.push('(s.ad LIKE ? OR s.soyad LIKE ? OR s.veliAdi LIKE ?)');

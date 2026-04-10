@@ -451,6 +451,25 @@
             vertical-align: middle;
             font-size: 13px;
         }
+        /* Checkbox - çocuğun yanında, dokunmatik dostu */
+        .attendance-check-wrap {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .attendance-check-wrap .attendance-check {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .attendance-check-label {
+            font-size: 12px;
+            color: #666;
+        }
     </style>
     <link rel="stylesheet" href="css/responsive.css">
 </head>
@@ -593,10 +612,10 @@
                 <table id="attendanceTable" class="attendance-table">
                     <thead>
                         <tr>
-                            <th>Sıra</th>
-                            <th>Öğrenci Adı</th>
-                            <th>Doğum Tarihi</th>
-                            <th>Gelmedi</th>
+                            <th class="att-col-check">Gelmedi</th>
+                            <th class="att-col-name">Öğrenci Adı</th>
+                            <th class="att-col-dogum">Doğum</th>
+                            <th class="att-col-sira">Sıra</th>
                         </tr>
                     </thead>
                     <tbody id="attendanceList"></tbody>
@@ -604,7 +623,7 @@
             </div>
 
             <div class="attendance-modal-buttons">
-                <button class="btn-success" onclick="saveAttendance()">💾 Kaydet</button>
+                <button class="btn-success" onclick="saveAttendance()">💾 Yoklamayı Kaydet</button>
                 <button class="btn-primary" onclick="downloadAttendancePDF()">📄 PDF İndir</button>
                 <button class="btn-danger" onclick="closeAttendanceModal()">Kapat</button>
             </div>
@@ -662,18 +681,15 @@
         async function loadInstructors() {
             try {
                 const user = JSON.parse(localStorage.getItem('currentUser'));
-                let url = `${API_URL}/users`;
-                
+                let url = `${API_URL}/users/instructors`;
                 // Yönetici ise sadece kendi şubesindeki antrenörleri göster
                 if (user.rol === 'yonetici' && user.subeId) {
                     url += `?subeId=${user.subeId}`;
                 }
-                
                 const response = await fetch(url);
-                const users = await response.json();
-                
-                // Sadece antrenör rolündeki kullanıcıları filtrele
-                const instructors = users.filter(u => u.rol === 'antrenor');
+                const data = await response.json();
+                // Hata durumunda data dizi değil { error } objesi döner
+                const instructors = Array.isArray(data) ? data : [];
                 
                 // Dropdown'ları doldur
                 const createSelect = document.getElementById('instructorId');
@@ -1029,7 +1045,7 @@
             const tbody = document.getElementById('attendanceList');
 
             if (groupStudents.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999;">Bu grupta aktif öğrenci yok</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#999; padding:20px;">Bu grupta aktif öğrenci yok</td></tr>';
                 return;
             }
 
@@ -1050,13 +1066,16 @@
                 const status = existingMap.get(s.id) || 'Var';
                 const checked = status === 'Yok' ? 'checked' : '';
                 return `
-                    <tr>
-                        <td><strong>${index + 1}</strong></td>
-                        <td><strong>${esc(s.ad)} ${esc(s.soyad)}</strong></td>
-                        <td>${s.dogumTarihi ? new Date(s.dogumTarihi).toLocaleDateString('tr-TR') : '-'}</td>
-                        <td style="text-align: center;">
-                            <input type="checkbox" class="attendance-check" data-student-id="${s.id}" title="Gelmediyse işaretleyin" ${checked} />
+                    <tr class="attendance-row">
+                        <td class="att-col-check">
+                            <label class="attendance-check-wrap">
+                                <input type="checkbox" class="attendance-check" data-student-id="${s.id}" title="Gelmediyse işaretleyin" ${checked} />
+                                <span class="attendance-check-label">Yok</span>
+                            </label>
                         </td>
+                        <td class="att-col-name"><strong>${esc(s.ad)} ${esc(s.soyad)}</strong></td>
+                        <td class="att-col-dogum">${s.dogumTarihi ? new Date(s.dogumTarihi).toLocaleDateString('tr-TR') : '-'}</td>
+                        <td class="att-col-sira"><strong>${index + 1}</strong></td>
                     </tr>
                 `;
             }).join('');
@@ -1093,6 +1112,7 @@
 
                 if (response.ok) {
                     showMessage('✅ Yoklama kaydedildi!');
+                    closeAttendanceModal();
                 } else {
                     const error = await response.json();
                     showMessage('❌ Hata: ' + error.error, 'error');

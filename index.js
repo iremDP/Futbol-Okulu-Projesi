@@ -592,6 +592,17 @@ app.get('/api/me', auth.verifyToken, async (req, res) => {
   }
 });
 
+// Antrenör listesi (grup oluşturma/düzenleme için - admin, yönetici, antrenör erişebilir)
+app.get('/api/users/instructors', auth.requireStaff, async (req, res) => {
+  try {
+    const subeId = req.effectiveSubeId ?? (req.user.rol === 'antrenor' ? req.user.subeId : null) ?? safeQueryId(req.query.subeId);
+    const result = await db.searchUsers(subeId, { rol: 'antrenor', limit: 500 });
+    res.json(result.rows);
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
 // Kullanıcıları getir (şube filtrelemeli) - limit varsa arama/sayfalama
 app.get('/api/users', auth.requireAdminOrYonetici, async (req, res) => {
   try {
@@ -1083,6 +1094,13 @@ app.post('/api/period-payments/:id/pay', auth.requireAdminOrYonetici, async (req
         paymentId: id,
         olusturmaTarihi: new Date().toISOString()
       });
+      // Ödeme yapan veliye otomatik SMS
+      const phone = payment.veliTelefon1 || payment.veliTelefon2 || '';
+      const phoneNum = (phone || '').replace(/\D/g, '').replace(/^0/, '');
+      if (phoneNum.length >= 10) {
+        const smsMsg = `Beşiktaş Futbol Okulu: ${payment.ad} ${payment.soyad} - ${payment.donemAdi} dönemi ödemeniz alındı. Tutar: ${payment.tutar.toFixed(2)} TL.`;
+        sendSms(phoneNum, smsMsg).catch(() => {});
+      }
     }
     res.json({ success: true, message: 'Ödeme kaydedildi' });
   } catch (error) {

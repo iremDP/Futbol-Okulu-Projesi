@@ -1,6 +1,6 @@
 /**
  * Mobil uyumluluk - Tüm sayfalar için responsive stiller
- * Touch-friendly (min 44px), safe area, veli paneli odaklı
+ * Admin, yönetici, antrenör, veli - touch-friendly (min 44px), safe area
  */
 
 /* Safe area - çentikli telefonlar için */
@@ -10,13 +10,53 @@ html {
 
 body {
   padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Touch-friendly - tap highlight kaldır, dokunmatik optimizasyon */
-button, .btn-danger, .btn-primary, .btn-success, .btn-login,
-.nav-menu a, #navMenu a {
+button, .btn-danger, .btn-primary, .btn-success, .btn-login, .btn-edit,
+.nav-menu a, #navMenu a, .nav-links a, .hamburger-btn {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+/* Nav wrapper - hamburger + links */
+.nav-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nav-wrapper .nav-links {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nav-wrapper .nav-links a {
+  padding: 8px 12px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.hamburger-btn {
+  display: none;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: #667eea;
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 @media (max-width: 768px) {
@@ -26,6 +66,13 @@ button, .btn-danger, .btn-primary, .btn-success, .btn-login,
     gap: 12px;
     padding-left: max(16px, env(safe-area-inset-left)) !important;
     padding-right: max(16px, env(safe-area-inset-right)) !important;
+    position: relative;
+    overflow: visible;
+  }
+
+  .nav-wrapper {
+    position: relative;
+    min-height: 44px;
   }
 
   .logo {
@@ -36,20 +83,126 @@ button, .btn-danger, .btn-primary, .btn-success, .btn-login,
     word-break: break-word;
   }
 
-  /* Nav - hem .nav-menu hem #navMenu (menu.js ile doldurulan) */
-  .nav-menu, #navMenu {
-    order: 3;
-    width: 100%;
-    flex-wrap: wrap;
-    gap: 8px;
+  /* Hamburger menü - mobilde */
+  .hamburger-btn {
     display: flex !important;
   }
 
-  .nav-menu a, #navMenu a {
+  .nav-wrapper {
+    order: 3;
+    width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    align-items: center;
+  }
+
+  .nav-wrapper .nav-links {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    flex-direction: column;
+    padding: 12px 16px;
+    gap: 8px;
+    z-index: 1000;
+    border-radius: 0 0 12px 12px;
+    margin-top: 4px;
+    max-height: 70vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .nav-wrapper .nav-links.nav-open {
+    display: flex !important;
+  }
+
+  .nav-wrapper .nav-links a {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 14px 16px !important;
+    font-size: 15px !important;
+    min-height: 48px;
+    border-radius: 8px;
+  }
+
+  .nav-menu, #navMenu, .nav-wrapper {
+    order: 3;
+    width: 100%;
+  }
+
+  .nav-menu .nav-menu, .nav-menu #navMenu, .nav-menu .nav-wrapper {
+    width: 100%;
+  }
+
+  .nav-menu a, #navMenu .nav-links a {
     padding: 10px 14px !important;
     font-size: 13px !important;
     min-height: 44px;
     min-width: auto;
+  }
+
+  /* Form grid - mobilde tek sütun */
+  .form-row, .form-row-3 {
+    grid-template-columns: 1fr !important;
+    gap: 16px;
+  }
+
+  .form-section {
+    padding: 16px !important;
+  }
+
+  .form-section h3 {
+    font-size: 16px !important;
+  }
+
+  /* Öğrenci kartları grid */
+  .students-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Arama çubuğu */
+  .search-bar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .search-bar input {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .search-bar .btn-filter, .search-bar .btn-primary {
+    width: 100%;
+  }
+
+  /* Sayfalama */
+  #studentsPagination, .pagination {
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  /* Grup kartları */
+  .group-card, .group-header {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 12px;
+  }
+
+  .group-header {
+    flex-wrap: wrap;
+  }
+
+  /* İçe aktar butonları */
+  .form-section [style*="display: flex"] {
+    flex-direction: column !important;
+  }
+
+  .form-section .btn-primary, .form-section a.btn-primary {
+    width: 100%;
   }
 
   .user-info {
@@ -217,6 +370,70 @@ button, .btn-danger, .btn-primary, .btn-success, .btn-login,
     padding: 10px 12px !important;
   }
 
+  /* Antrenör yoklama modalı - mobil: checkbox çocuğun yanında, büyük */
+  #attendanceModal .attendance-table {
+    display: block;
+  }
+  #attendanceModal .attendance-table thead {
+    display: none;
+  }
+  #attendanceModal .attendance-table tbody {
+    display: block;
+  }
+  #attendanceModal .attendance-table tbody tr.attendance-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    min-height: 56px;
+  }
+  #attendanceModal .attendance-table tbody tr.attendance-row:last-child {
+    border-bottom: none;
+  }
+  #attendanceModal .attendance-table tbody tr .att-col-sira {
+    display: none !important;
+  }
+  #attendanceModal .attendance-table tbody tr .att-col-check {
+    flex-shrink: 0;
+    padding: 0 !important;
+  }
+  #attendanceModal .attendance-check-wrap {
+    min-width: 48px;
+    min-height: 48px;
+    padding: 0;
+    justify-content: center;
+    align-items: center;
+    margin: -8px 0;
+  }
+  #attendanceModal .attendance-check-wrap .attendance-check {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px;
+    min-height: 28px;
+  }
+  #attendanceModal .attendance-table tbody tr .att-col-name {
+    flex: 1;
+    font-size: 16px !important;
+    padding: 0 !important;
+  }
+  #attendanceModal .attendance-table tbody tr .att-col-dogum {
+    font-size: 13px;
+    color: #666;
+    padding: 0 !important;
+  }
+  #attendanceModal .attendance-table-wrap {
+    padding: 0 !important;
+  }
+  #attendanceModal .attendance-modal-buttons {
+    flex-wrap: wrap;
+  }
+  #attendanceModal .attendance-modal-buttons .btn-success {
+    flex: 1 1 100%;
+    min-height: 48px;
+    font-size: 16px !important;
+  }
+
   /* Modal mobil */
   .modal-content {
     width: 95% !important;
@@ -272,6 +489,37 @@ button, .btn-danger, .btn-primary, .btn-success, .btn-login,
   /* Veli - mobilde kısa logo göster */
   .logo-full { display: none !important; }
   .logo-mobile { display: inline !important; }
+
+  /* Header stats (index.html toplam öğrenci) */
+  .header .stats {
+    width: 100%;
+    order: 4;
+    font-size: 13px !important;
+    padding: 10px 14px !important;
+    text-align: center;
+  }
+
+  /* Veli header - kompakt */
+  .header-veli .user-info {
+    flex: 1;
+    justify-content: flex-end;
+  }
+
+  /* Muhasebe, raporlar - filtre satırları */
+  .filter-row, .report-filters {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Kullanıcılar tablosu */
+  .user-table .table-wrap {
+    margin: 0 -16px;
+  }
+
+  /* Dönemler - dönem kartları */
+  .period-card {
+    padding: 16px !important;
+  }
 }
 
 @media (max-width: 480px) {
@@ -297,6 +545,8 @@ button, .btn-danger, .btn-primary, .btn-success, .btn-login,
   .login-container {
     padding: 24px 20px !important;
     margin: 16px;
+    margin-left: max(16px, env(safe-area-inset-left));
+    margin-right: max(16px, env(safe-area-inset-right));
   }
 
   .login-container .logo h1 {
@@ -323,5 +573,22 @@ button, .btn-danger, .btn-primary, .btn-success, .btn-login,
     padding: 8px 12px;
     margin: 4px;
     min-height: 36px;
+  }
+}
+
+/* Veli - ödeme kartları mobil */
+@media (max-width: 768px) {
+  .payment-item {
+    padding: 16px !important;
+  }
+
+  .payment-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .debt-summary {
+    padding: 16px !important;
   }
 }
