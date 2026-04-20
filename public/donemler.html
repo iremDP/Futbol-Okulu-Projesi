@@ -445,6 +445,7 @@
                                  <button class="btn-danger" onclick="deletePeriod(${period.id})">🗑️ Sil</button>` :
                                 `<span style="color: #28a745;">✅ Aktif</span>
                                  <button class="btn-success" onclick="openEditModal(${period.id})">✏️ Düzenle</button>
+                                 <button class="btn-primary" onclick="notifyPeriod(${period.id})" style="background:#10b981;">🔔 Hatırlat</button>
                                  <button class="btn-danger" onclick="deletePeriod(${period.id})">🗑️ Sil</button>`
                             }
                         </td>
@@ -504,18 +505,23 @@
         async function activatePeriod(periodId) {
             const period = allPeriods.find(p => p.id === periodId);
             
-            if (!confirm(`"${period.donemAdi}" dönemini başlatmak istediğinizden emin misiniz?\n\nTüm aktif öğrenciler için ${period.tutar} TL borç oluşturulacak.`)) {
+            if (!confirm(`"${period.donemAdi}" dönemini başlatmak istediğinizden emin misiniz?\n\nTüm aktif öğrenciler için ${period.tutar} TL borç oluşturulacak ve velilere bildirim gönderilecek.`)) {
                 return;
             }
             
             try {
                 const response = await fetch(`${API_URL}/periods/${periodId}/activate`, {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ notifyWhatsApp: true })
                 });
                 
                 if (response.ok) {
                     const result = await response.json();
                     showMessage(`✅ ${result.message}`);
+                    if (result.notify) {
+                        showNotifyModal(period.donemAdi, result.notify, { autoOpen: true });
+                    }
                     loadPeriods();
                 } else {
                     const error = await response.json();
@@ -524,6 +530,92 @@
             } catch (error) {
                 showMessage('❌ Hata: ' + error.message, 'error');
             }
+        }
+
+        async function notifyPeriod(periodId) {
+            const period = allPeriods.find(p => p.id === periodId);
+            if (!period) return;
+            if (!confirm(`"${period.donemAdi}" dönemine ait tüm borçlu velilere bildirim gönderilecek. Devam edilsin mi?`)) return;
+            try {
+                const response = await fetch(`${API_URL}/periods/${periodId}/notify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ includeWhatsApp: true })
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Bildirim başarısız');
+                showNotifyModal(period.donemAdi, result, { autoOpen: true });
+            } catch (error) {
+                showMessage('❌ Hata: ' + error.message, 'error');
+            }
+        }
+
+        function showNotifyModal(donemAdi, data, opts = {}) {
+            let modal = document.getElementById('notifyModal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'notifyModal';
+                modal.className = 'modal';
+                modal.innerHTML = `
+                    <div class="modal-content" style="max-width:640px;">
+                        <div class="modal-header">
+                            <h2>🔔 Bildirim Özeti</h2>
+                            <span class="close-modal" onclick="document.getElementById('notifyModal').classList.remove('active')">&times;</span>
+                        </div>
+                        <div id="notifyModalBody"></div>
+                    </div>`;
+                document.body.appendChild(modal);
+            }
+            const body = modal.querySelector('#notifyModalBody');
+            const total = data.debtors || 0;
+            const pushSent = data.pushSent || 0;
+            const wa = data.whatsApp;
+            const links = Array.isArray(data.links) ? data.links.filter(l => l.waUrl) : [];
+
+            let waLine = '';
+            if (wa && wa.enabled) {
+                waLine = `<p>🟢 WhatsApp (otomatik): <strong>${wa.sent || 0}</strong> gönderildi` +
+                    (wa.failed ? `, <strong style="color:#b91c1c;">${wa.failed} başarısız</strong>` : '') +
+                    (wa.skipped ? `, ${wa.skipped} atlandı` : '') + '</p>';
+            } else {
+                waLine = '<p>⚪ WhatsApp otomatik gönderimi kapalı. Aşağıdaki bağlantılardan tek tıkla gönderebilirsiniz.</p>';
+            }
+
+            const linksHtml = links.length
+                ? `<div style="max-height:320px; overflow:auto; border:1px solid #e2e8f0; border-radius:8px; padding:8px; margin-top:10px;">
+                    <div style="display:flex; justify-content:space-between; gap:10px; margin-bottom:8px;">
+                        <strong>WhatsApp Bağlantıları (${links.length})</strong>
+                        <button class="btn-primary" onclick="openAllWaLinks()" type="button" style="background:#10b981;">📤 Hepsini Sırayla Aç</button>
+                    </div>
+                    ${links.map(l => `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 8px; border-top:1px solid #f1f5f9;">
+                            <span>${esc(l.ad)} ${esc(l.soyad)} — ${esc(l.veliAdi || '')} (${esc(l.phone || '-')})</span>
+                            <a href="${l.waUrl}" target="_blank" class="btn-primary" style="background:#10b981; padding:6px 10px; text-decoration:none; color:#fff; border-radius:6px; font-size:12px;">WhatsApp</a>
+                        </div>
+                    `).join('')}
+                </div>`
+                : '';
+
+            body.innerHTML = `
+                <p style="color:#475569;">Dönem: <strong>${esc(donemAdi || '')}</strong></p>
+                <p>👥 Borçlu veli sayısı: <strong>${total}</strong></p>
+                <p>🔔 PWA push gönderilen: <strong>${pushSent}</strong></p>
+                ${waLine}
+                ${linksHtml}
+            `;
+
+            // "Hepsini Sırayla Aç" — 400 ms arayla açar (popup blocker için toplu açma sorunludur)
+            window.__waLinks = links.map(l => l.waUrl);
+            window.openAllWaLinks = function () {
+                let i = 0;
+                const timer = setInterval(() => {
+                    if (i >= window.__waLinks.length) { clearInterval(timer); return; }
+                    window.open(window.__waLinks[i], '_blank');
+                    i++;
+                }, 400);
+            };
+
+            if (opts.autoOpen) modal.classList.add('active');
         }
         function openEditModal(periodId) {
             const period = allPeriods.find(p => p.id === periodId);

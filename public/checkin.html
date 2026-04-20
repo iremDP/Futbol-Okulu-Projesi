@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Antrenmana Giriş - Futbol Okulu</title>
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#10b981" />
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%); min-height: 100vh;
+            color: #0f172a; padding: 16px;
+        }
+        .card {
+            max-width: 520px; margin: 32px auto; background: #fff; border-radius: 16px;
+            padding: 22px; box-shadow: 0 20px 40px rgba(0,0,0,.18);
+        }
+        .title { font-size: 20px; font-weight: 700; margin: 0 0 4px 0; color: #065f46; }
+        .subtitle { margin: 0 0 18px 0; color: #475569; font-size: 14px; }
+        .search {
+            width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 10px;
+            font-size: 16px; margin-bottom: 10px;
+        }
+        .list { display: flex; flex-direction: column; gap: 8px; max-height: 60vh; overflow-y: auto; }
+        .row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 10px;
+            background: #f8fafc; cursor: pointer; font-size: 16px;
+            transition: background .15s;
+        }
+        .row:hover { background: #ecfdf5; border-color: #10b981; }
+        .row.done { background: #d1fae5; border-color: #10b981; cursor: default; }
+        .row .btn {
+            background: #10b981; color: #fff; border: 0; padding: 8px 14px;
+            border-radius: 8px; font-weight: 600; font-size: 14px;
+        }
+        .row.done .btn { background: #059669; }
+        .state { text-align: center; padding: 28px 10px; color: #475569; }
+        .error { color: #b91c1c; }
+        .ok { color: #065f46; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1 class="title">✅ Antrenmana Giriş</h1>
+        <p class="subtitle" id="info">Bilgiler yükleniyor…</p>
+        <div id="content" class="state">Yükleniyor…</div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(location.search);
+        const token = params.get('t') || params.get('token') || '';
+        const content = document.getElementById('content');
+        const info = document.getElementById('info');
+
+        function fmtDate(d) {
+            if (!d) return '';
+            try { return new Date(d + 'T00:00:00').toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' }); }
+            catch (_) { return d; }
+        }
+
+        function esc(s) {
+            return String(s || '').replace(/[&<>"']/g, (c) => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        async function load() {
+            if (!token) {
+                content.innerHTML = '<p class="error">Geçersiz bağlantı.</p>';
+                return;
+            }
+            try {
+                const res = await fetch('/api/attendance/qr/info?token=' + encodeURIComponent(token));
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Bilgi alınamadı');
+                info.textContent = `${data.groupName || 'Grup'}${data.subeAdi ? ' · ' + data.subeAdi : ''} · ${fmtDate(data.date)}`;
+                renderList(data.students || []);
+            } catch (e) {
+                content.innerHTML = '<p class="error">' + esc(e.message) + '</p>';
+            }
+        }
+
+        const done = new Set();
+
+        function renderList(students) {
+            if (!students.length) {
+                content.innerHTML = '<p>Bu grupta aktif öğrenci yok.</p>';
+                return;
+            }
+            const input = document.createElement('input');
+            input.type = 'search';
+            input.placeholder = 'Ad veya soyad ara…';
+            input.className = 'search';
+
+            const list = document.createElement('div');
+            list.className = 'list';
+
+            function draw(filter) {
+                const q = (filter || '').toLowerCase().trim();
+                const filtered = q
+                    ? students.filter(s => (s.ad + ' ' + s.soyad).toLowerCase().includes(q))
+                    : students;
+                list.innerHTML = filtered.map(s => `
+                    <div class="row ${done.has(s.id) ? 'done' : ''}" data-id="${s.id}">
+                        <span>${esc(s.ad)} ${esc(s.soyad)}</span>
+                        <button class="btn" type="button">${done.has(s.id) ? '✓ Geldi' : 'Geldim'}</button>
+                    </div>
+                `).join('');
+                list.querySelectorAll('.row').forEach(r => {
+                    r.addEventListener('click', () => onCheckin(parseInt(r.dataset.id, 10)));
+                });
+            }
+
+            input.addEventListener('input', (e) => draw(e.target.value));
+            content.innerHTML = '';
+            content.appendChild(input);
+            content.appendChild(list);
+            draw('');
+        }
+
+        async function onCheckin(studentId) {
+            if (done.has(studentId)) return;
+            try {
+                const res = await fetch('/api/attendance/qr/checkin', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, studentId })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'İşlem başarısız');
+                done.add(studentId);
+                const row = document.querySelector(`.row[data-id="${studentId}"]`);
+                if (row) {
+                    row.classList.add('done');
+                    const btn = row.querySelector('.btn');
+                    if (btn) btn.textContent = '✓ Geldi';
+                }
+            } catch (e) {
+                alert('⚠ ' + e.message);
+            }
+        }
+
+        load();
+    </script>
+</body>
+</html>

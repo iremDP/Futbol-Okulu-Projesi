@@ -1,4 +1,4 @@
-const CACHE_NAME = 'futbol-okulu-v3';
+const CACHE_NAME = 'futbol-okulu-v4';
 const STATIC_ASSETS = [
   '/',
   '/login.html',
@@ -13,8 +13,10 @@ const STATIC_ASSETS = [
   '/subeler.html',
   '/muhasebe.html',
   '/testler.html',
+  '/checkin.html',
   '/api.js',
   '/menu.js',
+  '/push-client.js',
   '/manifest.json',
   '/css/responsive.css',
   '/icons/icon-192.png',
@@ -44,5 +46,42 @@ self.addEventListener('fetch', (e) => {
   }
   e.respondWith(
     fetch(e.request).catch(() => caches.match(e.request))
+  );
+});
+
+// Web Push bildirimleri
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Bildirim', body: '' };
+  try {
+    if (event.data) {
+      payload = event.data.json();
+    }
+  } catch (_) {
+    try { payload.body = event.data.text(); } catch (_) { /* sessiz */ }
+  }
+  const title = payload.title || 'Futbol Okulu';
+  const options = {
+    body: payload.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    data: { url: payload.url || '/' },
+    vibrate: [100, 50, 100]
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+      for (const c of wins) {
+        if ('focus' in c) {
+          c.navigate(url).catch(() => {});
+          return c.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
   );
 });

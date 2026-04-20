@@ -22,6 +22,10 @@ const auth = require('./auth');
 const { safeParseId, safeQueryId, pickAllowed, safeErrorMsg } = require('./lib/utils');
 const { getMailTransporter, getPdfFontPath } = require('./lib/services');
 const logger = require('./lib/logger');
+const pushService = require('./lib/push');
+const whatsappService = require('./lib/whatsapp');
+const QRCode = require('qrcode');
+const crypto = require('crypto');
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -39,6 +43,16 @@ const app = express();
 const port = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 const safeErr = (msg) => safeErrorMsg(msg, isProduction);
+
+/** Production'da /api/db-test ve ?db=1 detayı için: .env içine HEALTH_CHECK_SECRET yazın; istekte ?key=... veya Authorization: Bearer ... */
+function healthCheckAuthorized(req) {
+  const secret = (process.env.HEALTH_CHECK_SECRET || '').trim();
+  if (!secret || secret.length < 16) return false;
+  const q = String(req.query?.key || '').trim();
+  const auth = req.headers.authorization || '';
+  const bearer = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  return q === secret || bearer === secret;
+}
 
 // Güvenlik middleware - CSP XSS son savunma hattı
 // script-src-attr: inline event handler'lar (onclick vb.) için gerekli - HTML'de kullanılıyor
@@ -75,14 +89,21 @@ app.get('/favicon.ico', (req, res) => res.status(204).end());
 // Hızlı kontrol - DB'ye ihtiyaç yok (sunucu çalışıyor mu test için)
 app.get('/durum', (req, res) => res.send('OK'));
 app.get('/api/ping', (req, res) => res.json({ ok: true }));
-// DB bağlantı testi - login takılıyorsa bu deneyin
+// DB bağlantı testi — development'ta herkese açık; production'da sadece HEALTH_CHECK_SECRET ile
 app.get('/api/db-test', async (req, res) => {
+  if (isProduction && !healthCheckAuthorized(req)) {
+    return res.status(404).json({ error: 'Not found' });
+  }
   const t0 = Date.now();
   try {
     const user = await db.getUserByUsername('admin');
     res.json({ ok: true, ms: Date.now() - t0, user: !!user });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e.message, ms: Date.now() - t0 });
+    res.status(500).json({
+      ok: false,
+      error: isProduction ? 'Sunucu hatası' : e.message,
+      ms: Date.now() - t0
+    });
   }
 });
 // Ana sayfa: Giriş sayfasını doğrudan sun
@@ -153,8 +174,17 @@ auth.setCheckUserActive(async (userId) => {
 });
 
 // API kimlik doğrulama - /api/login ve /api/health hariç tüm /api istekleri için
+// QR check-in public uçları ve VAPID public key de kimliksiz erişime açık
 app.use((req, res, next) => {
-  if ((req.originalUrl === '/api/login' && req.method === 'POST') || req.originalUrl === '/api/ping' || req.originalUrl === '/api/db-test' || req.originalUrl.startsWith('/api/health')) return next();
+  const url = req.originalUrl.split('?')[0];
+  const openPaths = new Set([
+    '/api/ping',
+    '/api/db-test',
+    '/api/attendance/qr/info',
+    '/api/attendance/qr/checkin',
+    '/api/push/vapid-key'
+  ]);
+  if ((url === '/api/login' && req.method === 'POST') || openPaths.has(url) || url.startsWith('/api/health')) return next();
   if (req.originalUrl.startsWith('/api/')) return auth.verifyToken(req, res, next);
   next();
 });
@@ -166,19 +196,21 @@ app.use((req, res, next) => {
 });
 
 
-// Health check (hosting/monitoring için)
+// Health check — her zaman güvenli özet; ?db=1 sayıları yalnızca development veya HEALTH_CHECK_SECRET ile
 app.get('/api/health', async (req, res) => {
   const out = { status: 'ok', timestamp: new Date().toISOString() };
-  if (req.query.db === '1' && process.env.DATABASE_URL) {
+  const wantDb = req.query.db === '1';
+  const canShowDb = wantDb && (!isProduction || healthCheckAuthorized(req));
+  if (canShowDb && db.getAllSubeler && db.getAllUsers && db.getAllStudents) {
     try {
       const [s, u, st] = await Promise.all([
-        db.getAllSubeler ? db.getAllSubeler() : [],
-        db.getAllUsers ? db.getAllUsers(null) : [],
-        db.getAllStudents ? db.getAllStudents() : []
+        db.getAllSubeler(),
+        db.getAllUsers(null),
+        db.getAllStudents()
       ]);
       out.db = { subeler: (s || []).length, users: (u || []).length, students: (st || []).length };
     } catch (e) {
-      out.db = { error: e.message };
+      out.db = { error: isProduction ? 'unavailable' : e.message };
     }
   }
   res.json(out);
@@ -997,13 +1029,111 @@ app.delete('/api/periods/:id', auth.requireAdminOrYonetici, async (req, res) => 
   }
 });
 
-// Dönemi aktif et (borçları oluştur)
+// Dönemi aktif et (borçları oluştur) + velilere otomatik hatırlatma (push + whatsapp)
 app.post('/api/periods/:id/activate', auth.requireAdminOrYonetici, async (req, res) => {
   try {
     const id = safeParseId(req.params.id);
     if (!id) return res.status(400).json({ error: 'Geçersiz ID' });
     const result = await db.activatePeriod(id);
-    res.json({ success: true, message: `${result.count} öğrenci için borç oluşturuldu` });
+    let notify = null;
+    try {
+      notify = await notifyPeriodDebtors(id, { includeWhatsApp: req.body?.notifyWhatsApp !== false });
+    } catch (e) {
+      logger.warn && logger.warn('Dönem aktivasyon bildirimi hatası: ' + e.message);
+    }
+    res.json({
+      success: true,
+      message: `${result.count} öğrenci için borç oluşturuldu`,
+      notify
+    });
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+/** Dönemin borçlu velilerine push + opsiyonel WhatsApp gönder. Ayrıca wa.me bağlantıları döner. */
+async function notifyPeriodDebtors(periodId, opts = {}) {
+  const includeWhatsApp = opts.includeWhatsApp !== false;
+  const debtors = await db.getDebtorsByPeriodId(periodId);
+  if (!debtors || debtors.length === 0) {
+    return { debtors: 0, pushSent: 0, whatsApp: null, links: [] };
+  }
+  const first = debtors[0];
+  const donemAdi = first.donemAdi || '';
+  const bitisTarihi = first.bitisTarihi || '';
+  const formatBitis = bitisTarihi
+    ? new Date(bitisTarihi).toLocaleDateString('tr-TR')
+    : '';
+
+  // 1) PWA push bildirimleri (arka planda)
+  let pushSent = 0;
+  if (pushService.isEnabled()) {
+    for (const d of debtors) {
+      try {
+        const userIds = await db.getParentUserIdsByStudentId(d.studentId);
+        if (!userIds || userIds.length === 0) continue;
+        const tutarText = Number(d.tutar || 0).toFixed(2) + ' TL';
+        const body = `${d.ad} ${d.soyad} — ${donemAdi}: ${tutarText}${formatBitis ? ' (son ödeme ' + formatBitis + ')' : ''}`;
+        const r = await pushService.sendToUsers(db, userIds, {
+          title: 'Ödeme Hatırlatması',
+          body,
+          url: '/veli.html'
+        });
+        if (r && r.sent) pushSent += r.sent;
+      } catch (_) { /* sessiz */ }
+    }
+  }
+
+  // 2) WhatsApp (Meta Cloud API). Yapılandırma yoksa sessizce atlanır.
+  let whatsApp = null;
+  if (includeWhatsApp && whatsappService.isEnabled()) {
+    const recipients = debtors.map((d) => ({
+      phone: d.veliTelefon1 || d.veliTelefon2 || '',
+      params: [
+        d.veliAdi || (d.ad + ' ' + d.soyad),
+        donemAdi,
+        Number(d.tutar || 0).toFixed(2) + ' TL',
+        formatBitis || '-'
+      ],
+      // Template yoksa bu metin denenir (USE_PLAIN=1 gerektirir)
+      text: `Sayın ${d.veliAdi || 'veli'}, ${d.ad} ${d.soyad} için ${donemAdi} dönemi ödemesi (${Number(d.tutar || 0).toFixed(2)} TL)${formatBitis ? ' son tarih ' + formatBitis : ''} bekleniyor.`
+    })).filter(r => r.phone);
+    whatsApp = await whatsappService.sendBulk(recipients);
+  }
+
+  // 3) Her zaman: her veli için wa.me click-to-chat bağlantısı (manuel gönderim için)
+  const links = debtors.map((d) => {
+    const phone = d.veliTelefon1 || d.veliTelefon2 || '';
+    const tutarText = Number(d.tutar || 0).toFixed(2) + ' TL';
+    const text = `Sayın ${d.veliAdi || 'veli'}, ${d.ad} ${d.soyad} için ${donemAdi} dönemi ödemesi (${tutarText})${formatBitis ? ', son ödeme tarihi ' + formatBitis : ''}. Beşiktaş Futbol Okulu.`;
+    return {
+      studentId: d.studentId,
+      ad: d.ad,
+      soyad: d.soyad,
+      veliAdi: d.veliAdi,
+      phone,
+      tutar: d.tutar,
+      waUrl: whatsappService.buildClickToChatUrl(phone, text)
+    };
+  });
+
+  return {
+    debtors: debtors.length,
+    pushSent,
+    whatsApp,
+    links
+  };
+}
+
+/** Manuel tetikleme: bir dönemin tüm borçlu velilerine push + WhatsApp gönder. */
+app.post('/api/periods/:id/notify', auth.requireAdminOrYonetici, async (req, res) => {
+  try {
+    const id = safeParseId(req.params.id);
+    if (!id) return res.status(400).json({ error: 'Geçersiz ID' });
+    const result = await notifyPeriodDebtors(id, {
+      includeWhatsApp: req.body?.includeWhatsApp !== false
+    });
+    res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ error: safeErr(error.message) });
   }
@@ -1100,6 +1230,17 @@ app.post('/api/period-payments/:id/pay', auth.requireAdminOrYonetici, async (req
       if (phoneNum.length >= 10) {
         const smsMsg = `Beşiktaş Futbol Okulu: ${payment.ad} ${payment.soyad} - ${payment.donemAdi} dönemi ödemeniz alındı. Tutar: ${payment.tutar.toFixed(2)} TL.`;
         sendSms(phoneNum, smsMsg).catch(() => {});
+      }
+      if (pushService.isEnabled() && payment.studentId) {
+        db.getParentUserIdsByStudentId(payment.studentId).then((ids) => {
+          if (ids && ids.length) {
+            pushService.sendToUsers(db, ids, {
+              title: 'Ödeme Alındı',
+              body: `${payment.ad} ${payment.soyad} — ${payment.donemAdi} dönemi: ${payment.tutar.toFixed(2)} TL alındı.`,
+              url: '/veli.html'
+            }).catch(() => {});
+          }
+        }).catch(() => {});
       }
     }
     res.json({ success: true, message: 'Ödeme kaydedildi' });
@@ -1472,13 +1613,184 @@ app.post('/api/attendance', auth.requireStaff, async (req, res) => {
     if (!groupId || !date || !Array.isArray(entries)) {
       return res.status(400).json({ error: 'groupId, date ve entries gerekli' });
     }
+    const gid = parseInt(groupId);
     const result = await db.saveAttendance({
-      groupId: parseInt(groupId),
+      groupId: gid,
       date,
       instructorId: instructorId ? parseInt(instructorId) : null,
       entries
     });
+    if (pushService.isEnabled()) {
+      const group = await db.getGroupById(gid);
+      const groupName = group?.groupName || group?.groupname || 'Grup';
+      Promise.all(entries.map(async (e) => {
+        try {
+          const userIds = await db.getParentUserIdsByStudentId(e.studentId);
+          if (!userIds.length) return;
+          const title = e.status === 'Var' ? 'Antrenman Yoklaması' : 'Devamsızlık Bildirimi';
+          const body = e.status === 'Var'
+            ? `${groupName} — bugünkü antrenmana katıldı.`
+            : `${groupName} — bugünkü antrenmana katılmadı.`;
+          await pushService.sendToUsers(db, userIds, {
+            title, body, url: '/veli.html'
+          });
+        } catch (_) { /* sessiz */ }
+      })).catch(() => {});
+    }
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+// ============ QR YOKLAMA ============
+
+/** Antrenör/yönetici: grup + tarih için QR token üretir */
+app.post('/api/attendance/qr/generate', auth.requireStaff, async (req, res) => {
+  try {
+    const groupId = safeParseId(req.body.groupId);
+    const date = (req.body.date || '').slice(0, 10);
+    const ttlMinutes = Math.min(240, Math.max(5, parseInt(req.body.ttlMinutes || 30, 10) || 30));
+    if (!groupId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'groupId ve date (YYYY-MM-DD) gerekli' });
+    }
+    const group = await db.getGroupById(groupId);
+    if (!group) return res.status(404).json({ error: 'Grup bulunamadı' });
+    const token = crypto.randomBytes(24).toString('base64url');
+    const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000).toISOString();
+    await db.createAttendanceQrToken({
+      groupId,
+      date,
+      token,
+      expiresAt,
+      createdBy: req.user?.id || null
+    });
+    try { await db.cleanupExpiredQrTokens(); } catch (_) { /* sessiz */ }
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const checkinUrl = `${protocol}://${host}/checkin.html?t=${token}`;
+    const qrDataUrl = await QRCode.toDataURL(checkinUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 360
+    });
+    res.json({ token, url: checkinUrl, qrDataUrl, expiresAt, ttlMinutes });
+  } catch (error) {
+    logger.error && logger.error('QR üretim hatası', { error: error.message });
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+/** Public: token doğrulama + grup/öğrenci bilgileri (check-in sayfası için) */
+app.get('/api/attendance/qr/info', async (req, res) => {
+  try {
+    const token = (req.query.token || '').trim();
+    if (!token) return res.status(400).json({ error: 'Token gerekli' });
+    const row = await db.getAttendanceQrToken(token);
+    if (!row) return res.status(404).json({ error: 'Geçersiz kod' });
+    const expiresAt = row.expiresAt || row.expiresat;
+    if (new Date(expiresAt).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Kod süresi doldu' });
+    }
+    const groupId = row.groupId || row.groupid;
+    const students = await db.getActiveStudentsByGroup(groupId);
+    res.json({
+      groupName: row.groupName || row.groupname,
+      subeAdi: row.subeAdi || row.subeadi || null,
+      date: row.date,
+      students,
+      expiresAt
+    });
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+/** Public: öğrenci seçip "Geldim" — yoklamaya 'Var' olarak düşer */
+app.post('/api/attendance/qr/checkin', async (req, res) => {
+  try {
+    const token = (req.body.token || '').trim();
+    const studentId = safeParseId(req.body.studentId);
+    if (!token || !studentId) return res.status(400).json({ error: 'Token ve studentId gerekli' });
+    const row = await db.getAttendanceQrToken(token);
+    if (!row) return res.status(404).json({ error: 'Geçersiz kod' });
+    const expiresAt = row.expiresAt || row.expiresat;
+    if (new Date(expiresAt).getTime() < Date.now()) {
+      return res.status(410).json({ error: 'Kod süresi doldu' });
+    }
+    const groupId = row.groupId || row.groupid;
+    const students = await db.getActiveStudentsByGroup(groupId);
+    const found = students.find(s => String(s.id) === String(studentId));
+    if (!found) return res.status(400).json({ error: 'Bu öğrenci bu grupta değil' });
+    await db.markStudentPresent({
+      groupId,
+      date: row.date,
+      studentId,
+      instructorId: row.createdBy || row.createdby || null
+    });
+    if (pushService.isEnabled()) {
+      db.getParentUserIdsByStudentId(studentId).then((ids) => {
+        if (ids && ids.length) {
+          pushService.sendToUsers(db, ids, {
+            title: 'Antrenman Yoklaması',
+            body: `${found.ad} ${found.soyad} antrenmana giriş yaptı.`,
+            url: '/veli.html'
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
+    res.json({ success: true, student: found });
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+// ============ WEB PUSH ============
+
+app.get('/api/push/vapid-key', (req, res) => {
+  const key = pushService.getPublicKey();
+  if (!key) return res.status(404).json({ error: 'Bildirim servisi yapılandırılmamış' });
+  res.json({ publicKey: key });
+});
+
+app.post('/api/push/subscribe', async (req, res) => {
+  try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Oturum gerekli' });
+    const { endpoint, keys } = req.body || {};
+    const p256dh = keys?.p256dh;
+    const auth = keys?.auth;
+    if (!endpoint || !p256dh || !auth) {
+      return res.status(400).json({ error: 'Eksik abonelik verisi' });
+    }
+    await db.addPushSubscription({ userId: req.user.id, endpoint, p256dh, auth });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+app.post('/api/push/unsubscribe', async (req, res) => {
+  try {
+    const endpoint = req.body?.endpoint;
+    if (!endpoint) return res.status(400).json({ error: 'endpoint gerekli' });
+    await db.removePushSubscription(endpoint);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: safeErr(error.message) });
+  }
+});
+
+/** Test: kendi kendine deneme bildirimi */
+app.post('/api/push/test', async (req, res) => {
+  try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Oturum gerekli' });
+    if (!pushService.isEnabled()) return res.status(503).json({ error: 'Bildirim servisi pasif' });
+    const result = await pushService.sendToUsers(db, [req.user.id], {
+      title: 'Test Bildirimi',
+      body: 'Bildirimler başarıyla çalışıyor.',
+      url: '/'
+    });
+    res.json({ success: true, ...result });
   } catch (error) {
     res.status(500).json({ error: safeErr(error.message) });
   }

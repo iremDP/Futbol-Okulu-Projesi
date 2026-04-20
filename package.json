@@ -15,6 +15,7 @@
     "use-sqlite": "node scripts/switch-to-sqlite.js",
     "pg:backfill": "node scripts/backfill-subeid.js",
     "backup": "node scripts/backup-db.js",
+    "push:keys": "node scripts/generate-vapid-keys.js",
     "dist": "node scripts/create-dist.js",
     "pm2:start": "pm2 start ecosystem.config.cjs",
     "pm2:prod": "pm2 start ecosystem.config.cjs --env production",
@@ -40,6 +41,8 @@
     "nodemailer": "^8.0.1",
     "pdfkit": "^0.17.2",
     "pg": "^8.19.0",
+    "qrcode": "^1.5.4",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

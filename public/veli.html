@@ -327,6 +327,11 @@
             color: #721c24;
             display: block;
         }
+        .message.success {
+            background: #d1fae5;
+            color: #065f46;
+            display: block;
+        }
     </style>
     <link rel="stylesheet" href="css/responsive.css">
 </head>
@@ -345,6 +350,16 @@
         <div class="welcome-card">
             <h2>Hoş Geldiniz!</h2>
             <p>Sporcularınızın bilgilerini ve ödeme durumlarını aşağıda görüntüleyebilirsiniz.</p>
+            <div id="pushCard" style="margin-top:14px; padding:12px 14px; background:#ecfdf5; border:1px solid #10b981; border-radius:10px; display:none; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                <div style="color:#065f46; font-size:14px;">
+                    🔔 <strong>Anlık bildirimleri açın</strong> — yoklama ve ödeme bilgilerini anında alın.
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button id="pushEnableBtn" class="btn-success" type="button">Bildirimleri Aç</button>
+                    <button id="pushDisableBtn" class="btn-danger" type="button" style="display:none;">Kapat</button>
+                    <button id="pushTestBtn" class="btn-primary" type="button" style="display:none;">Test Gönder</button>
+                </div>
+            </div>
         </div>
 
         <!-- Test Sonuçları bölümü gizli - ileride tekrar açılabilir
@@ -364,9 +379,50 @@
     </div>
 
     <script src="api.js"></script>
+    <script src="push-client.js"></script>
     <script>
         const API_URL = (window.API_URL || window.location.origin + '/api');
         let currentUser = null;
+
+        async function initPushUI() {
+            try {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+                try { await navigator.serviceWorker.register('/service-worker.js'); } catch (_) {}
+                const res = await fetch('/api/push/vapid-key');
+                if (!res.ok) return;
+                const card = document.getElementById('pushCard');
+                const enableBtn = document.getElementById('pushEnableBtn');
+                const disableBtn = document.getElementById('pushDisableBtn');
+                const testBtn = document.getElementById('pushTestBtn');
+                card.style.display = 'flex';
+
+                async function refresh() {
+                    const on = await PushClient.isEnabled();
+                    enableBtn.style.display = on ? 'none' : '';
+                    disableBtn.style.display = on ? '' : 'none';
+                    testBtn.style.display = on ? '' : 'none';
+                }
+                enableBtn.addEventListener('click', async () => {
+                    enableBtn.disabled = true;
+                    try { await PushClient.enable(); showMessage('🔔 Bildirimler açıldı', 'success'); }
+                    catch (e) { showMessage('⚠ ' + e.message, 'error'); }
+                    enableBtn.disabled = false;
+                    refresh();
+                });
+                disableBtn.addEventListener('click', async () => {
+                    disableBtn.disabled = true;
+                    await PushClient.disable();
+                    disableBtn.disabled = false;
+                    showMessage('🔕 Bildirimler kapatıldı', 'success');
+                    refresh();
+                });
+                testBtn.addEventListener('click', async () => {
+                    try { await PushClient.test(); showMessage('📨 Test bildirimi gönderildi', 'success'); }
+                    catch (e) { showMessage('⚠ ' + e.message, 'error'); }
+                });
+                refresh();
+            } catch (_) { /* sessiz */ }
+        }
 
         // Yetki kontrolü
         (function() {
@@ -388,6 +444,7 @@
             }
 
             loadParentData();
+            initPushUI();
         })();
 
         function showMessage(text, type = 'error') {

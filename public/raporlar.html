@@ -406,8 +406,24 @@
             `;
         }
 
+        /** PostgreSQL (pg) küçük harf sütun adı döndürebilir; tek ayda polyline tek noktada görünmez */
+        function normalizeMonthlyTrendRows(rows) {
+            if (!rows || !rows.length) return [];
+            return rows.map(r => {
+                const p = r.presentCount ?? r.presentcount ?? r.PRESENTCOUNT;
+                const a = r.absentCount ?? r.absentcount ?? r.ABSENTCOUNT;
+                const m = r.month ?? r.MONTH ?? '';
+                return {
+                    month: m,
+                    presentCount: Number(p) || 0,
+                    absentCount: Number(a) || 0
+                };
+            });
+        }
+
         function renderLineChart(containerId, rows) {
             const container = document.getElementById(containerId);
+            rows = normalizeMonthlyTrendRows(rows);
             if (!rows || rows.length === 0) {
                 container.innerHTML = '<div class="empty">Veri bulunamadı</div>';
                 return;
@@ -416,15 +432,17 @@
             const width = 600;
             const height = 220;
             const padding = { left: 40, right: 20, top: 20, bottom: 30 };
+            const innerW = width - padding.left - padding.right;
+            const n = rows.length;
             const maxVal = Math.max(
                 1,
                 ...rows.map(r => Math.max(r.presentCount || 0, r.absentCount || 0))
             );
-            const xStep = rows.length > 1
-                ? (width - padding.left - padding.right) / (rows.length - 1)
-                : 0;
-
-            const xForIndex = i => padding.left + i * xStep;
+            const xStep = n > 1 ? innerW / (n - 1) : 0;
+            const xForIndex = i => {
+                if (n === 1) return padding.left + innerW / 2;
+                return padding.left + i * xStep;
+            };
             const yForValue = val =>
                 height - padding.bottom - (val / maxVal) * (height - padding.top - padding.bottom);
 
@@ -435,6 +453,14 @@
             const absentPoints = rows.map((r, i) =>
                 `${xForIndex(i)},${yForValue(r.absentCount || 0)}`
             ).join(' ');
+
+            const pointMarkers = rows.map((r, i) => {
+                const x = xForIndex(i);
+                const yp = yForValue(r.presentCount || 0);
+                const ya = yForValue(r.absentCount || 0);
+                return `<circle cx="${x}" cy="${yp}" r="5" fill="#28a745" stroke="#fff" stroke-width="1" />
+                        <circle cx="${x}" cy="${ya}" r="5" fill="#dc3545" stroke="#fff" stroke-width="1" />`;
+            }).join('');
 
             const monthLabels = rows.map((r, i) => {
                 const x = xForIndex(i);
@@ -458,6 +484,7 @@
                         <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" stroke="#ccc" />
                         <polyline fill="none" stroke="#28a745" stroke-width="2" points="${presentPoints}" />
                         <polyline fill="none" stroke="#dc3545" stroke-width="2" points="${absentPoints}" />
+                        ${pointMarkers}
                         ${monthLabels}
                     </svg>
                 </div>

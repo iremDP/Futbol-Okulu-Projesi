@@ -624,8 +624,32 @@
 
             <div class="attendance-modal-buttons">
                 <button class="btn-success" onclick="saveAttendance()">💾 Yoklamayı Kaydet</button>
+                <button class="btn-primary" onclick="openQrAttendance()" style="background:#10b981;">🔲 QR Yoklama</button>
                 <button class="btn-primary" onclick="downloadAttendancePDF()">📄 PDF İndir</button>
                 <button class="btn-danger" onclick="closeAttendanceModal()">Kapat</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Yoklama Modal -->
+    <div id="qrModal" class="modal">
+        <div class="modal-content" style="max-width:480px;text-align:center;">
+            <div class="modal-header">
+                <h2>🔲 QR Yoklama</h2>
+                <span class="close-modal" onclick="closeQrModal()">&times;</span>
+            </div>
+            <p id="qrGroupInfo" style="margin:0 0 12px 0;color:#475569;"></p>
+            <div id="qrImgWrap" style="padding:16px;background:#f8fafc;border-radius:12px;display:inline-block;">
+                <div id="qrLoading" style="color:#64748b;">QR kod üretiliyor…</div>
+                <img id="qrImg" alt="QR Kod" style="max-width:320px;display:none;"/>
+            </div>
+            <p id="qrExpiresInfo" style="margin:12px 0 4px 0;color:#64748b;font-size:13px;"></p>
+            <p style="margin:4px 0 16px 0;color:#64748b;font-size:13px;">Antrenörün telefonuyla bu kodu gösterin; sporcu kamera ile okuyup ismini seçerek "Geldim" diyecek.</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                <button class="btn-primary" id="qrCopyBtn" type="button">🔗 Bağlantıyı Kopyala</button>
+                <button class="btn-primary" id="qrOpenBtn" type="button" style="background:#10b981;">📱 Yeni Sekmede Aç</button>
+                <button class="btn-primary" id="qrRefreshBtn" type="button">🔄 Yenile</button>
+                <button class="btn-danger" onclick="closeQrModal()">Kapat</button>
             </div>
         </div>
     </div>
@@ -1083,6 +1107,68 @@
         
         function closeAttendanceModal() {
             document.getElementById('attendanceModal').classList.remove('active');
+        }
+
+        // QR yoklama modal
+        async function openQrAttendance() {
+            if (!currentAttendanceGroupId || !currentAttendanceDate) {
+                showMessage('❌ Önce grup ve tarih seçin', 'error');
+                return;
+            }
+            document.getElementById('qrModal').classList.add('active');
+            document.getElementById('qrGroupInfo').textContent =
+                (document.getElementById('attendanceGroupName').textContent || '') +
+                ' — ' + currentAttendanceDate;
+            await generateQrToken();
+        }
+
+        function closeQrModal() {
+            document.getElementById('qrModal').classList.remove('active');
+            const img = document.getElementById('qrImg');
+            img.style.display = 'none';
+            img.src = '';
+            document.getElementById('qrLoading').style.display = '';
+            document.getElementById('qrLoading').textContent = 'QR kod üretiliyor…';
+            document.getElementById('qrExpiresInfo').textContent = '';
+        }
+
+        async function generateQrToken() {
+            const loading = document.getElementById('qrLoading');
+            const img = document.getElementById('qrImg');
+            const info = document.getElementById('qrExpiresInfo');
+            img.style.display = 'none';
+            loading.style.display = '';
+            loading.textContent = 'QR kod üretiliyor…';
+            info.textContent = '';
+            try {
+                const res = await fetch(`${API_URL}/attendance/qr/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        groupId: currentAttendanceGroupId,
+                        date: currentAttendanceDate,
+                        ttlMinutes: 60
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'QR üretilemedi');
+                img.src = data.qrDataUrl;
+                img.style.display = 'inline-block';
+                loading.style.display = 'none';
+                const exp = new Date(data.expiresAt);
+                info.textContent = `Son geçerlilik: ${exp.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}`;
+                document.getElementById('qrCopyBtn').onclick = async () => {
+                    try {
+                        await navigator.clipboard.writeText(data.url);
+                        showMessage('🔗 Bağlantı kopyalandı');
+                    } catch (_) { prompt('Kopyalamak için Ctrl+C:', data.url); }
+                };
+                document.getElementById('qrOpenBtn').onclick = () => window.open(data.url, '_blank');
+                document.getElementById('qrRefreshBtn').onclick = generateQrToken;
+            } catch (e) {
+                loading.textContent = '⚠ ' + (e.message || 'QR üretilemedi');
+            }
         }
 
         async function saveAttendance() {

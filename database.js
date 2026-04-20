@@ -192,6 +192,33 @@ db.exec(`
   )
 `);
 
+// QR yoklama tokenları (antrenörün ürettiği geçici kod)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS attendance_qr_tokens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    groupId INTEGER NOT NULL,
+    date TEXT NOT NULL,
+    expiresAt TEXT NOT NULL,
+    createdBy INTEGER,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY(groupId) REFERENCES groups(id)
+  )
+`);
+
+// Web Push abonelikleri (PWA bildirim)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    userId INTEGER NOT NULL,
+    endpoint TEXT UNIQUE NOT NULL,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY(userId) REFERENCES users(id)
+  )
+`);
+
 // Performans testleri
 db.exec(`
   CREATE TABLE IF NOT EXISTS test_sessions (
@@ -1240,6 +1267,20 @@ function searchStudentPeriodPayments(subeId = null, opts = {}) {
   return { rows, total };
 }
 
+/** Belirli bir dönemin borçlu velilerini (ve telefonlarını) getir — hatırlatma için. */
+function getDebtorsByPeriodId(periodId) {
+  return db.prepare(`
+    SELECT spp.id as paymentId, spp.studentId, spp.tutar, spp.odemeDurumu,
+      s.ad, s.soyad, s.veliAdi, s.veliTelefon1, s.veliTelefon2, s.email,
+      pp.donemAdi, pp.baslangicTarihi, pp.bitisTarihi
+    FROM student_period_payments spp
+    JOIN students s ON spp.studentId = s.id
+    JOIN payment_periods pp ON spp.periodId = pp.id
+    WHERE spp.periodId = ? AND spp.odemeDurumu = 'Borçlu' AND s.durum = 'Aktif'
+    ORDER BY s.ad, s.soyad
+  `).all(periodId);
+}
+
 // Ödeme yap
 function makePayment(paymentId, paymentData) {
   const stmt = db.prepare(`
@@ -1607,6 +1648,114 @@ function saveAttendance({ groupId, date, instructorId, entries }) {
   });
 
   return transaction();
+}
+
+// ============ QR YOKLAMA TOKEN FONKSİYONLARI ============
+
+function createAttendanceQrToken({ groupId, date, token, expiresAt, createdBy }) {
+  db.prepare(`
+    INSERT INTO attendance_qr_tokens (token, groupId, date, expiresAt, createdBy, createdAt)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(token, groupId, date, expiresAt, createdBy || null, new Date().toISOString());
+  return { token, expiresAt };
+}
+
+function getAttendanceQrToken(token) {
+  const row = db.prepare(`
+    SELECT t.*, g.groupName, sb.subeAdi
+    FROM attendance_qr_tokens t
+    LEFT JOIN groups g ON g.id = t.groupId
+    LEFT JOIN subeler sb ON sb.id = g.subeId
+    WHERE t.token = ?
+  `).get(token);
+  return row || null;
+}
+
+function cleanupExpiredQrTokens() {
+  const nowIso = new Date().toISOString();
+  db.prepare('DELETE FROM attendance_qr_tokens WHERE expiresAt < ?').run(nowIso);
+}
+
+/** Aktif öğrencileri getir (QR yoklama listesi için) */
+function getActiveStudentsByGroup(groupId) {
+  return db.prepare(`
+    SELECT id, ad, soyad FROM students
+    WHERE groupId = ? AND durum = 'Aktif'
+    ORDER BY ad, soyad
+  `).all(groupId);
+}
+
+/** QR ile tek öğrenciyi 'Var' olarak işaretle (gerekirse session yaratır) */
+function markStudentPresent({ groupId, date, studentId, instructorId }) {
+  const trx = db.transaction(() => {
+    let session = getAttendanceSession(groupId, date);
+    if (!session) {
+      const info = db.prepare(`
+        INSERT INTO attendance_sessions (groupId, date, instructorId, createdAt)
+        VALUES (?, ?, ?, ?)
+      `).run(groupId, date, instructorId || null, new Date().toISOString());
+      session = { id: info.lastInsertRowid };
+    }
+    const existing = db.prepare(
+      'SELECT id, status FROM attendance_entries WHERE sessionId = ? AND studentId = ?'
+    ).get(session.id, studentId);
+    if (existing) {
+      if (existing.status !== 'Var') {
+        db.prepare('UPDATE attendance_entries SET status = ? WHERE id = ?').run('Var', existing.id);
+      }
+    } else {
+      db.prepare(`
+        INSERT INTO attendance_entries (sessionId, studentId, status, note)
+        VALUES (?, ?, 'Var', NULL)
+      `).run(session.id, studentId);
+    }
+    return { success: true, sessionId: session.id };
+  });
+  return trx();
+}
+
+// ============ PUSH ABONELİK FONKSİYONLARI ============
+
+function addPushSubscription({ userId, endpoint, p256dh, auth }) {
+  const existing = db.prepare('SELECT id FROM push_subscriptions WHERE endpoint = ?').get(endpoint);
+  if (existing) {
+    db.prepare('UPDATE push_subscriptions SET userId = ?, p256dh = ?, auth = ? WHERE id = ?')
+      .run(userId, p256dh, auth, existing.id);
+    return { id: existing.id, updated: true };
+  }
+  const info = db.prepare(`
+    INSERT INTO push_subscriptions (userId, endpoint, p256dh, auth, createdAt)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(userId, endpoint, p256dh, auth, new Date().toISOString());
+  return { id: info.lastInsertRowid };
+}
+
+function removePushSubscription(endpoint) {
+  db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+  return { success: true };
+}
+
+function getPushSubscriptionsByUserId(userId) {
+  return db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE userId = ?').all(userId);
+}
+
+/** Bir öğrencinin velilerinin kullanıcı ID'lerini bulur (push hedefleme için) */
+function getParentUserIdsByStudentId(studentId) {
+  const s = db.prepare('SELECT veliTelefon1, email FROM students WHERE id = ?').get(studentId);
+  const ids = new Set();
+  const direct = db.prepare("SELECT id FROM users WHERE rol = 'veli' AND studentId = ?").all(studentId);
+  for (const r of direct) ids.add(r.id);
+  if (s) {
+    if (s.veliTelefon1) {
+      const byTel = db.prepare("SELECT id FROM users WHERE rol = 'veli' AND telefon = ?").all(s.veliTelefon1);
+      for (const r of byTel) ids.add(r.id);
+    }
+    if (s.email) {
+      const byMail = db.prepare("SELECT id FROM users WHERE rol = 'veli' AND email = ?").all(s.email);
+      for (const r of byMail) ids.add(r.id);
+    }
+  }
+  return Array.from(ids);
 }
 
 /** Öğrencinin yoklama kayıtlarını getir (veli için - son 60 gün) */
@@ -2268,6 +2417,7 @@ module.exports = {
   getStudentPeriodPayments,
   getAllStudentPeriodPayments,
   searchStudentPeriodPayments,
+  getDebtorsByPeriodId,
   makePayment,
   getPaymentReceipt,
   updatePayment,
@@ -2289,6 +2439,15 @@ module.exports = {
   getStudentAttendance,
   getAttendanceReport,
   getAttendanceMonthlyTrend,
+  createAttendanceQrToken,
+  getAttendanceQrToken,
+  cleanupExpiredQrTokens,
+  getActiveStudentsByGroup,
+  markStudentPresent,
+  addPushSubscription,
+  removePushSubscription,
+  getPushSubscriptionsByUserId,
+  getParentUserIdsByStudentId,
   createTestSession,
   getStudentTests,
   getTestAverages,

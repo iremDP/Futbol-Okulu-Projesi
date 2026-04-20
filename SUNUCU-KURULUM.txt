@@ -1,0 +1,65 @@
+================================================================================
+  FUTBOL OKULU — SUNUCUYA (ONLİNE) ÇIKARKEN YAPILACAKLAR
+  Bu dosya kısa bir kontrol listesidir; yazılım bilgisi gerektirmez.
+================================================================================
+
+1) SUNUCUDA ".env" DOSYASI OLUŞTURUN
+   - Proje klasöründeki ".env.example" dosyasını kopyalayıp adını ".env" yapın.
+   - Aşağıdaki satırları mutlaka doldurun (değerler sizin sunucunuza özel):
+
+   NODE_ENV=production
+   JWT_SECRET=     (uzun ve rastgele bir metin — tahmin edilemesin)
+   CORS_ORIGIN=    (sitenizin adresi, örn: https://www.sizin-domain.com)
+
+2) VERİTABANI
+   - Canlıda genelde PostgreSQL kullanılır: DATABASE_URL=... satırını doldurun.
+   - SQLite kullanacaksanız dosya yedeğini düzenli alın.
+
+3) OPSİYONEL AMA ÖNERİLİR — TEKNİK TEŞHİS ANAHTARI
+   HEALTH_CHECK_SECRET=  (en az 16 karakter, rastgele)
+   - Bu olmadan: dışarıdan veritabanı testi ve kayıt sayısı uçları kapalıdır (güvenlik için iyi).
+   - Gerekirse tarayıcıda şöyle test edebilirsiniz (anahtarı kimseyle paylaşmayın):
+     https://sizin-site.com/api/health?db=1&key=BURAYA_ANAHTAR
+
+4) E-POSTA VE SMS (İSTERSENİZ)
+   - SMTP_* satırları — makbuz e-postası
+   - NETGSM_* satırları — ödeme SMS’i
+
+4b) ANLIK BİLDİRİM (PUSH) — İSTERSENİZ
+   - Terminalde bir kez çalıştırın:  npm run push:keys
+   - Çıktıdaki üç satırı (.env) dosyasına yapıştırın:
+       VAPID_PUBLIC_KEY=...
+       VAPID_PRIVATE_KEY=...
+       VAPID_SUBJECT=mailto:ileti@sizin-domain.com
+   - Anahtarları kimseyle paylaşmayın. Bu satırlar olmazsa bildirimler KAPALI kalır,
+     sistem sorunsuz çalışmaya devam eder.
+   - Site mutlaka HTTPS olmalıdır (bildirimler HTTPS şarttır).
+
+4c) WHATSAPP OTOMATİK HATIRLATMA — İSTERSENİZ
+   a) developers.facebook.com üzerinden "WhatsApp Business Platform" kaydı açın.
+   b) Uygulama oluşturun → "WhatsApp" ürünü ekleyin → Test numarası veya gerçek
+      numara bağlayın; "Permanent access token" üretin.
+   c) "Message Templates" bölümünde "utility" kategoride bir template onaylatın.
+      Örnek ad: odeme_hatirlatma, dil: tr, gövde (body) şöyle olabilir:
+         Sayın {{1}}, {{2}} dönemi için {{3}} ödemesi son tarih {{4}}. Beşiktaş Futbol Okulu.
+   d) Aşağıdaki 3 satırı .env'ye ekleyin:
+         WHATSAPP_API_TOKEN=EAA...            (access token)
+         WHATSAPP_PHONE_NUMBER_ID=123456...   (Meta panelindeki numara ID'si)
+         WHATSAPP_TEMPLATE_NAME=odeme_hatirlatma
+      Kaydedip uygulamayı yeniden başlatın.
+   - Bu satırları doldurmadıysanız sistem "wa.me" tek-tık bağlantıları üretir
+     ve yöneticiniz her veliye tek tıkla WhatsApp'tan gönderebilir (ücretsiz).
+
+5) UYGULAMAYI ÇALIŞTIRMA
+   - Node.js kurulu sunucuda: npm install  sonra  npm start
+   - veya PM2 gibi bir araçla arka planda çalıştırın (hosting firmanız size söyler).
+
+6) HTTPS
+   - Site mutlaka https:// ile açılmalı (çoğu hosting bunu otomatik veya panelden verir).
+
+7) YEDEK
+   - Veritabanını düzenli yedekleyin (hosting yedeği veya manuel).
+
+================================================================================
+Sorun olursa hosting / yazılım desteğinize veya geliştiricinize bu dosyayı gösterebilirsiniz.
+================================================================================

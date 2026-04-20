@@ -393,6 +393,31 @@ async function createSchema() {
     )
   `);
 
+  await q(`
+    CREATE TABLE IF NOT EXISTS attendance_qr_tokens (
+      id SERIAL PRIMARY KEY,
+      token TEXT UNIQUE NOT NULL,
+      groupId INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      expiresAt TEXT NOT NULL,
+      createdBy INTEGER,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (groupId) REFERENCES groups(id)
+    )
+  `);
+
+  await q(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      userId INTEGER NOT NULL,
+      endpoint TEXT UNIQUE NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id)
+    )
+  `);
+
   // Test sessions
   await q(`
     CREATE TABLE IF NOT EXISTS test_sessions (
@@ -1298,6 +1323,35 @@ async function searchStudentPeriodPayments(subeId = null, opts = {}) {
   return { rows: res.rows, total };
 }
 
+async function getDebtorsByPeriodId(periodId) {
+  await ensureReady();
+  const res = await pool.query(`
+    SELECT spp.id as paymentId, spp.studentId, spp.tutar, spp.odemeDurumu,
+      s.ad, s.soyad, s.veliAdi, s.veliTelefon1, s.veliTelefon2, s.email,
+      pp.donemAdi, pp.baslangicTarihi, pp.bitisTarihi
+    FROM student_period_payments spp
+    JOIN students s ON spp.studentId = s.id
+    JOIN payment_periods pp ON spp.periodId = pp.id
+    WHERE spp.periodId = $1 AND spp.odemeDurumu = 'Borçlu' AND s.durum = 'Aktif'
+    ORDER BY s.ad, s.soyad
+  `, [periodId]);
+  return res.rows.map((r) => ({
+    paymentId: r.paymentid ?? r.paymentId,
+    studentId: r.studentid ?? r.studentId,
+    tutar: r.tutar,
+    odemeDurumu: r.odemedurumu ?? r.odemeDurumu,
+    ad: r.ad,
+    soyad: r.soyad,
+    veliAdi: r.veliadi ?? r.veliAdi,
+    veliTelefon1: r.velitelefon1 ?? r.veliTelefon1,
+    veliTelefon2: r.velitelefon2 ?? r.veliTelefon2,
+    email: r.email,
+    donemAdi: r.donemadi ?? r.donemAdi,
+    baslangicTarihi: r.baslangictarihi ?? r.baslangicTarihi,
+    bitisTarihi: r.bitistarihi ?? r.bitisTarihi
+  }));
+}
+
 async function makePayment(paymentId, paymentData) {
   await ensureReady();
   await pool.query(`
@@ -1582,6 +1636,126 @@ async function saveAttendance({ groupId, date, instructorId, entries }) {
   }
 }
 
+// ============ QR YOKLAMA TOKEN FONKSİYONLARI ============
+
+async function createAttendanceQrToken({ groupId, date, token, expiresAt, createdBy }) {
+  await ensureReady();
+  await pool.query(`
+    INSERT INTO attendance_qr_tokens (token, groupId, date, expiresAt, createdBy, createdAt)
+    VALUES ($1, $2, $3, $4, $5, $6)
+  `, [token, groupId, date, expiresAt, createdBy || null, new Date().toISOString()]);
+  return { token, expiresAt };
+}
+
+async function getAttendanceQrToken(token) {
+  await ensureReady();
+  const res = await pool.query(`
+    SELECT t.*, g.groupName, sb.subeAdi
+    FROM attendance_qr_tokens t
+    LEFT JOIN groups g ON g.id = t.groupId
+    LEFT JOIN subeler sb ON sb.id = g.subeId
+    WHERE t.token = $1
+  `, [token]);
+  return res.rows[0] || null;
+}
+
+async function cleanupExpiredQrTokens() {
+  await ensureReady();
+  await pool.query('DELETE FROM attendance_qr_tokens WHERE expiresAt < $1', [new Date().toISOString()]);
+}
+
+async function getActiveStudentsByGroup(groupId) {
+  await ensureReady();
+  const res = await pool.query(`
+    SELECT id, ad, soyad FROM students
+    WHERE groupId = $1 AND durum = 'Aktif'
+    ORDER BY ad, soyad
+  `, [groupId]);
+  return res.rows;
+}
+
+async function markStudentPresent({ groupId, date, studentId, instructorId }) {
+  await ensureReady();
+  await pool.query('BEGIN');
+  try {
+    let session = await getAttendanceSession(groupId, date);
+    if (!session) {
+      const r = await pool.query(`
+        INSERT INTO attendance_sessions (groupId, date, instructorId, createdAt)
+        VALUES ($1, $2, $3, $4) RETURNING id
+      `, [groupId, date, instructorId || null, new Date().toISOString()]);
+      session = { id: r.rows[0].id };
+    }
+    const exist = await pool.query(
+      'SELECT id, status FROM attendance_entries WHERE sessionId = $1 AND studentId = $2',
+      [session.id, studentId]
+    );
+    if (exist.rows.length > 0) {
+      if (exist.rows[0].status !== 'Var') {
+        await pool.query('UPDATE attendance_entries SET status = $1 WHERE id = $2', ['Var', exist.rows[0].id]);
+      }
+    } else {
+      await pool.query(`
+        INSERT INTO attendance_entries (sessionId, studentId, status, note)
+        VALUES ($1, $2, 'Var', NULL)
+      `, [session.id, studentId]);
+    }
+    await pool.query('COMMIT');
+    return { success: true, sessionId: session.id };
+  } catch (e) {
+    await pool.query('ROLLBACK');
+    throw e;
+  }
+}
+
+// ============ PUSH ABONELİK FONKSİYONLARI ============
+
+async function addPushSubscription({ userId, endpoint, p256dh, auth }) {
+  await ensureReady();
+  const res = await pool.query(`
+    INSERT INTO push_subscriptions (userId, endpoint, p256dh, auth, createdAt)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (endpoint) DO UPDATE SET userId = EXCLUDED.userId, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth
+    RETURNING id
+  `, [userId, endpoint, p256dh, auth, new Date().toISOString()]);
+  return { id: res.rows[0].id };
+}
+
+async function removePushSubscription(endpoint) {
+  await ensureReady();
+  await pool.query('DELETE FROM push_subscriptions WHERE endpoint = $1', [endpoint]);
+  return { success: true };
+}
+
+async function getPushSubscriptionsByUserId(userId) {
+  await ensureReady();
+  const res = await pool.query(
+    'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE userId = $1',
+    [userId]
+  );
+  return res.rows;
+}
+
+async function getParentUserIdsByStudentId(studentId) {
+  await ensureReady();
+  const sRes = await pool.query('SELECT veliTelefon1, email FROM students WHERE id = $1', [studentId]);
+  const ids = new Set();
+  const direct = await pool.query("SELECT id FROM users WHERE rol = 'veli' AND studentId = $1", [studentId]);
+  for (const r of direct.rows) ids.add(r.id);
+  const s = sRes.rows[0];
+  if (s) {
+    if (s.velitelefon1) {
+      const byTel = await pool.query("SELECT id FROM users WHERE rol = 'veli' AND telefon = $1", [s.velitelefon1]);
+      for (const r of byTel.rows) ids.add(r.id);
+    }
+    if (s.email) {
+      const byMail = await pool.query("SELECT id FROM users WHERE rol = 'veli' AND email = $1", [s.email]);
+      for (const r of byMail.rows) ids.add(r.id);
+    }
+  }
+  return Array.from(ids);
+}
+
 /** Öğrencinin yoklama kayıtlarını getir (veli için - son N gün) */
 async function getStudentAttendance(studentId, days = 60) {
   await ensureReady();
@@ -1642,13 +1816,37 @@ async function getAttendanceReport(subeId = null, startDate, endDate, groupId = 
     ORDER BY absentCount DESC, st.ad, st.soyad
   `, studentParams)).rows;
 
-  const totals = studentRows.reduce((acc, row) => {
-    acc.present += parseInt(row.presentCount || row.presentcount || 0, 10);
-    acc.absent += parseInt(row.absentCount || row.absentcount || 0, 10);
+  const num = (v) => parseInt(v, 10) || 0;
+  const normGroup = (row) => ({
+    ...row,
+    groupId: row.groupId ?? row.groupid,
+    groupName: row.groupName ?? row.groupname,
+    subeAdi: row.subeAdi ?? row.subeadi,
+    sessionCount: num(row.sessionCount ?? row.sessioncount),
+    presentCount: num(row.presentCount ?? row.presentcount),
+    absentCount: num(row.absentCount ?? row.absentcount)
+  });
+  const normStudent = (row) => ({
+    ...row,
+    studentId: row.studentId ?? row.studentid,
+    ad: row.ad,
+    soyad: row.soyad,
+    groupName: row.groupName ?? row.groupname,
+    subeAdi: row.subeAdi ?? row.subeadi,
+    presentCount: num(row.presentCount ?? row.presentcount),
+    absentCount: num(row.absentCount ?? row.absentcount)
+  });
+
+  const groupsNorm = groupRows.map(normGroup);
+  const studentsNorm = studentRows.map(normStudent);
+
+  const totals = studentsNorm.reduce((acc, row) => {
+    acc.present += row.presentCount;
+    acc.absent += row.absentCount;
     return acc;
   }, { present: 0, absent: 0 });
 
-  return { totals, groups: groupRows, students: studentRows };
+  return { totals, groups: groupsNorm, students: studentsNorm };
 }
 
 async function getAttendanceMonthlyTrend(subeId = null, startDate, endDate, groupId = null) {
@@ -1659,17 +1857,21 @@ async function getAttendanceMonthlyTrend(subeId = null, startDate, endDate, grou
   if (subeId) { whereClause += ` AND g.subeId = $${i++}`; params.push(subeId); }
   if (groupId) { whereClause += ` AND g.id = $${i++}`; params.push(groupId); }
   const res = await pool.query(`
-    SELECT substring(s.date, 1, 7) as month,
-      SUM(CASE WHEN ae.status = 'Var' THEN 1 ELSE 0 END) as presentCount,
-      SUM(CASE WHEN ae.status = 'Yok' THEN 1 ELSE 0 END) as absentCount
+    SELECT substring(s.date::text, 1, 7) as month,
+      SUM(CASE WHEN ae.status = 'Var' THEN 1 ELSE 0 END)::int as "presentCount",
+      SUM(CASE WHEN ae.status = 'Yok' THEN 1 ELSE 0 END)::int as "absentCount"
     FROM attendance_sessions s
     JOIN attendance_entries ae ON ae.sessionId = s.id
     JOIN groups g ON s.groupId = g.id
     ${whereClause}
-    GROUP BY substring(s.date, 1, 7)
+    GROUP BY substring(s.date::text, 1, 7)
     ORDER BY month
   `, params);
-  return res.rows;
+  return res.rows.map((r) => ({
+    month: r.month,
+    presentCount: parseInt(r.presentCount, 10) || 0,
+    absentCount: parseInt(r.absentCount, 10) || 0
+  }));
 }
 
 // ============ TEST FONKSİYONLARI ============
@@ -2117,6 +2319,7 @@ module.exports = {
   getStudentPeriodPayments,
   getAllStudentPeriodPayments,
   searchStudentPeriodPayments,
+  getDebtorsByPeriodId,
   makePayment,
   getPaymentReceipt,
   updatePayment,
@@ -2138,6 +2341,15 @@ module.exports = {
   getStudentAttendance,
   getAttendanceReport,
   getAttendanceMonthlyTrend,
+  createAttendanceQrToken,
+  getAttendanceQrToken,
+  cleanupExpiredQrTokens,
+  getActiveStudentsByGroup,
+  markStudentPresent,
+  addPushSubscription,
+  removePushSubscription,
+  getPushSubscriptionsByUserId,
+  getParentUserIdsByStudentId,
   createTestSession,
   getStudentTests,
   getTestAverages,
